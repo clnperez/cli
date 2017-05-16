@@ -43,6 +43,7 @@ type ConfigFile struct {
 	NodesFormat          string                      `json:"nodesFormat,omitempty"`
 	PruneFilters         []string                    `json:"pruneFilters,omitempty"`
 	Proxies              map[string]ProxyConfig      `json:"proxies,omitempty"`
+	InsecureRegistries   []string                    `json:"insecure-registries,omitempty"`
 }
 
 // ProxyConfig contains proxy configuration settings
