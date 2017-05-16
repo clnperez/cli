@@ -40,7 +40,7 @@ func AddCommands(cmd *cobra.Command, dockerCli *command.DockerCli) {
 		image.NewImageCommand(dockerCli),
 		image.NewBuildCommand(dockerCli),
 
-		// manifest
+		// manfiest
 		manifest.NewManifestCommand(dockerCli),
 
 		// network

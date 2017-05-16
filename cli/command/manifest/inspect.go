@@ -5,143 +5,164 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Sirupsen/logrus"
+	"github.com/spf13/cobra"
+
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
-	"github.com/spf13/cobra"
-	"golang.org/x/net/context"
 )
 
 type inspectOptions struct {
-	ref      string
-	list     string
-	verbose  bool
-	insecure bool
+	remote  string
+	verbose bool
 }
 
 // NewInspectCommand creates a new `docker manifest inspect` command
-func newInspectCommand(dockerCli command.Cli) *cobra.Command {
+func newInspectCommand(dockerCli *command.DockerCli) *cobra.Command {
 	var opts inspectOptions
 
 	cmd := &cobra.Command{
-		Use:   "inspect [OPTIONS] [MANIFEST_LIST] MANIFEST",
-		Short: "Display an image manifest, or manifest list",
-		Args:  cli.RequiresRangeArgs(1, 2),
+		Use:   "inspect [OPTIONS] NAME[:TAG]",
+		Short: "Display an image's manifest, or a remote manifest list.",
+		Args:  cli.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch len(args) {
-			case 1:
-				opts.ref = args[0]
-			case 2:
-				opts.list = args[0]
-				opts.ref = args[1]
-			}
-			return runInspect(dockerCli, opts)
+			opts.remote = args[0]
+			return runListInspect(dockerCli, opts)
 		},
 	}
 
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.insecure, "insecure", false, "allow communication with an insecure registry")
+
 	flags.BoolVarP(&opts.verbose, "verbose", "v", false, "Output additional info including layers and platform")
+
 	return cmd
 }
 
-func runInspect(dockerCli command.Cli, opts inspectOptions) error {
-	namedRef, err := normalizeReference(opts.ref)
+func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
+
+	// Get the data and then format it
+	var (
+		imgInspect []ImgManifestInspect
+		prettyJSON bytes.Buffer
+	)
+
+	named, err := reference.ParseNormalizedNamed(opts.remote)
+	if err != nil {
+		return err
+	}
+	targetRepo, err := registry.ParseRepositoryInfo(named)
 	if err != nil {
 		return err
 	}
 
-	// If list reference is provided, display the local manifest in a list
-	if opts.list != "" {
-		listRef, err := normalizeReference(opts.list)
-		if err != nil {
-			return err
-		}
-
-		imageManifest, err := dockerCli.ManifestStore().Get(listRef, namedRef)
-		if err != nil {
-			return err
-		}
-		return printManifest(dockerCli, imageManifest, opts)
-	}
-
-	// Try a local manifest list first
-	localManifestList, err := dockerCli.ManifestStore().GetList(namedRef)
-	if err == nil {
-		return printManifestList(dockerCli, namedRef, localManifestList, opts)
-	}
-
-	// Next try a remote manifest
-	ctx := context.Background()
-	registryClient := dockerCli.RegistryClient(opts.insecure)
-	imageManifest, err := registryClient.GetManifest(ctx, namedRef)
-	if err == nil {
-		return printManifest(dockerCli, imageManifest, opts)
-	}
-
-	// Finally try a remote manifest list
-	manifestList, err := registryClient.GetManifestList(ctx, namedRef)
+	// For now, always pull as there' no reason to store an inspect. They're quick to get.
+	// When the engine is multi-arch image aware, we can store these in a universal location to
+	// save a little bandwidth.
+	imgInspect, _, err = getImageData(dockerCli, named.String(), "", true)
 	if err != nil {
-		return err
+		logrus.Fatal(err)
 	}
-	return printManifestList(dockerCli, namedRef, manifestList, opts)
-}
-
-func printManifest(dockerCli command.Cli, manifest types.ImageManifest, opts inspectOptions) error {
-	buffer := new(bytes.Buffer)
-	if !opts.verbose {
-		_, raw, err := manifest.Payload()
+	// output basic informative details about the image
+	if len(imgInspect) == 1 {
+		// this is a basic single manifest
+		err = json.Indent(&prettyJSON, imgInspect[0].CanonicalJSON, "", "    ")
 		if err != nil {
 			return err
 		}
-		if err := json.Indent(buffer, raw, "", "\t"); err != nil {
+		fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+		if !opts.verbose {
+			return nil
+		}
+		mfd, _, err := buildManifestObj(targetRepo, imgInspect[0])
+		if err != nil {
 			return err
 		}
-		fmt.Fprintln(dockerCli.Out(), buffer.String())
+		jsonBytes, err := json.Marshal(mfd)
+		if err != nil {
+			return err
+		}
+		prettyJSON.Reset()
+		err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
 		return nil
 	}
-	jsonBytes, err := json.MarshalIndent(manifest, "", "\t")
+
+	manifests := []manifestlist.ManifestDescriptor{}
+	// More than one response. This is a manifest list.
+	for _, img := range imgInspect {
+		mfd, _, err := buildManifestObj(targetRepo, img)
+		if err != nil {
+			return fmt.Errorf("Error assembling ManifestDescriptor")
+		}
+		manifests = append(manifests, mfd)
+	}
+	deserializedML, err := manifestlist.FromDescriptors(manifests)
 	if err != nil {
 		return err
 	}
-	dockerCli.Out().Write(append(jsonBytes, '\n'))
-	return nil
-}
-
-func printManifestList(dockerCli command.Cli, namedRef reference.Named, list []types.ImageManifest, opts inspectOptions) error {
+	jsonBytes, err := deserializedML.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
 	if !opts.verbose {
-		targetRepo, err := registry.ParseRepositoryInfo(namedRef)
-		if err != nil {
-			return err
-		}
-
-		manifests := []manifestlist.ManifestDescriptor{}
-		// More than one response. This is a manifest list.
-		for _, img := range list {
-			mfd, err := buildManifestDescriptor(targetRepo, img)
+		return nil
+	}
+	for _, img := range imgInspect {
+		switch img.MediaType {
+		case schema1.MediaTypeManifest:
+			var manifestv1 schema1.Manifest
+			err := json.Unmarshal(img.CanonicalJSON, &manifestv1)
 			if err != nil {
-				return fmt.Errorf("error assembling ManifestDescriptor")
+				return err
 			}
-			manifests = append(manifests, mfd)
+			jsonBytes, err := json.Marshal(manifestv1)
+			if err != nil {
+				return err
+			}
+			prettyJSON.Reset()
+			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+		case schema2.MediaTypeManifest:
+			var manifestv2 schema2.Manifest
+			err := json.Unmarshal(img.CanonicalJSON, &manifestv2)
+			if err != nil {
+				return err
+			}
+			jsonBytes, err := json.Marshal(manifestv2)
+			if err != nil {
+				return err
+			}
+			prettyJSON.Reset()
+			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
 		}
-		deserializedML, err := manifestlist.FromDescriptors(manifests)
-		if err != nil {
-			return err
-		}
-		jsonBytes, err := deserializedML.MarshalJSON()
-		if err != nil {
-			return err
-		}
-		fmt.Fprintln(dockerCli.Out(), string(jsonBytes))
-		return nil
+		/*
+			prettyJSON.Reset()
+			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+		*/
 	}
-	jsonBytes, err := json.MarshalIndent(list, "", "\t")
-	if err != nil {
-		return err
-	}
-	dockerCli.Out().Write(append(jsonBytes, '\n'))
 	return nil
 }
