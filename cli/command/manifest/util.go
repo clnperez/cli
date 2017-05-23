@@ -76,6 +76,9 @@ func getListFilenames(transaction string) ([]string, error) {
 	}
 	fd, err := os.Open(transactionDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	fileNames, err := fd.Readdirnames(-1)
@@ -101,14 +104,14 @@ func getManifestFd(manifest, transaction string) (*os.File, error) {
 
 func getFdGeneric(file string) (*os.File, error) {
 	fileinfo, err := os.Stat(file)
-	if fileinfo.IsDir() {
-		return nil, fmt.Errorf("Cannot open directory")
-	}
 	if err != nil && os.IsNotExist(err) {
 		logrus.Debugf("Manifest file %s not found.", file)
 		return nil, nil
 	} else if err != nil {
 		return nil, err
+	}
+	if fileinfo.IsDir() {
+		return nil, fmt.Errorf("Cannot open directory")
 	}
 	fd, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
