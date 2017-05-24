@@ -71,12 +71,10 @@ func getListFilenames(transaction string) ([]string, error) {
 		return nil, err
 	}
 	transactionDir := filepath.Join(baseDir, makeFilesafeName(transaction))
-	if err != nil {
-		return nil, err
-	}
 	fd, err := os.Open(transactionDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			logrus.Debugf(err.Error())
 			return nil, nil
 		}
 		return nil, err
@@ -155,11 +153,9 @@ func unmarshalIntoManifestInspect(manifest, transaction string) (ImgManifestInsp
 	if err != nil {
 		return ImgManifestInspect{}, err
 	}
-
 	if err := json.Unmarshal(buf, &newMf); err != nil {
 		return ImgManifestInspect{}, err
 	}
-
 	return newMf, nil
 }
 

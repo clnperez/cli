@@ -42,7 +42,6 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 		return nil, err
 	}
 	if fd != nil {
-		// An individual manifest
 		defer fd.Close()
 		_, err := fd.Stat()
 		if err != nil {
@@ -52,9 +51,12 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 		if err != nil {
 			return nil, err
 		}
-		return append(foundImages, mfInspect), nil
+		foundImages = append(foundImages, mfInspect)
 	}
-	// A local manifest list transaction
+	return foundImages, nil
+}
+
+func loadManifestList(transaction string) (foundImages []ImgManifestInspect, _ error) {
 	manifests, err := getListFilenames(transaction)
 	if err != nil {
 		return nil, err
@@ -63,7 +65,7 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 		// @TODO Make this a func, and reuse it in push
 		fileParts := strings.Split(manifestFile, string(filepath.Separator))
 		numParts := len(fileParts)
-		mfInspect, err := unmarshalIntoManifestInspect(fileParts[numParts-1], fileParts[numParts-2])
+		mfInspect, err := unmarshalIntoManifestInspect(fileParts[numParts-1], transaction)
 		if err != nil {
 			return nil, err
 		}
@@ -139,6 +141,14 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 	}
 	if len(foundImages) > 0 {
 		// Great, no reason to pull from the registry.
+		return foundImages, repoInfo, nil
+	}
+	// Maybe this wasn't a single manifest, in which case there will be no transaction ID
+	foundImages, err = loadManifestList(normalName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(foundImages) > 0 {
 		return foundImages, repoInfo, nil
 	}
 
