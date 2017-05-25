@@ -154,6 +154,9 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 		if err != nil {
 			return err
 		}
+		if len(manifests) == 0 {
+			return fmt.Errorf("%s not found", targetRef.String())
+		}
 		// Set this now, for purging the dir later, because we alter it below to use for the pushURL
 		targetFilename, _ = mfToFilename(targetRef.String(), "")
 	}
