@@ -62,7 +62,6 @@ func loadManifestList(transaction string) (foundImages []ImgManifestInspect, _ e
 		return nil, err
 	}
 	for _, manifestFile := range manifests {
-		// @TODO Make this a func, and reuse it in push
 		fileParts := strings.Split(manifestFile, string(filepath.Separator))
 		numParts := len(fileParts)
 		mfInspect, err := unmarshalIntoManifestInspect(fileParts[numParts-1], transaction)
