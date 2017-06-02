@@ -241,7 +241,7 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 		// image name *and* a transaction ID. IOW, foundImages will be only one image.
 		if !fetchOnly {
 			if err := storeManifest(foundImages[0], makeFilesafeName(normalName), transactionID); err != nil {
-				logrus.Errorf("Error storing manifests: %s\n", err)
+				logrus.Errorf("error storing manifests: %s\n", err)
 			}
 		}
 		return foundImages, repoInfo, nil

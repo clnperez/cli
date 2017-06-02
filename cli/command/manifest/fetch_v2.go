@@ -72,8 +72,8 @@ func (mf *v2ManifestFetcher) fetchWithRepository(ctx context.Context, ref refere
 	var (
 		manifest    distribution.Manifest
 		tagOrDigest string // Used for logging/progress only
-		tagList     = []string{}
-		imageList   = []ImgManifestInspect{}
+		tagList     []string
+		imageList   []ImgManifestInspect
 	)
 
 	manSvc, err := mf.repo.Manifests(ctx)
@@ -262,7 +262,7 @@ func fixManifestLayers(m *schema1.Manifest) error {
 
 	if imgs[len(imgs)-1].Parent != "" && runtime.GOOS != "windows" {
 		// Windows base layer can point to a base layer parent that is not in manifest.
-		return errors.New("Invalid parent ID in the base layer of the image.")
+		return errors.New("invalid parent ID in the base layer of the image.")
 	}
 
 	// check general duplicates to error instead of a deadlock
@@ -284,7 +284,7 @@ func fixManifestLayers(m *schema1.Manifest) error {
 			m.FSLayers = append(m.FSLayers[:i], m.FSLayers[i+1:]...)
 			m.History = append(m.History[:i], m.History[i+1:]...)
 		} else if imgs[i].Parent != imgs[i+1].ID {
-			return fmt.Errorf("Invalid parent ID. Expected %v, got %v.", imgs[i+1].ID, imgs[i].Parent)
+			return fmt.Errorf("invalid parent ID. Expected %v, got %v.", imgs[i+1].ID, imgs[i].Parent)
 		}
 	}
 
