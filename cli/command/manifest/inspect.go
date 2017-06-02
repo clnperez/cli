@@ -11,8 +11,6 @@ import (
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/distribution/manifest/manifestlist"
-	"github.com/docker/distribution/manifest/schema1"
-	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
 )
@@ -60,9 +58,6 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 		return err
 	}
 
-	// For now, always pull as there' no reason to store an inspect. They're quick to get.
-	// When the engine is multi-arch image aware, we can store these in a universal location to
-	// save a little bandwidth.
 	imgInspect, _, err = getImageData(dockerCli, named.String(), "", true)
 	if err != nil {
 		logrus.Fatal(err)
@@ -121,40 +116,12 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 		return nil
 	}
 	for _, img := range imgInspect {
-		switch img.MediaType {
-		case schema1.MediaTypeManifest:
-			var manifestv1 schema1.Manifest
-			err := json.Unmarshal(img.CanonicalJSON, &manifestv1)
-			if err != nil {
-				return err
-			}
-			jsonBytes, err := json.Marshal(manifestv1)
-			if err != nil {
-				return err
-			}
-			prettyJSON.Reset()
-			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
-		case schema2.MediaTypeManifest:
-			var manifestv2 schema2.Manifest
-			err := json.Unmarshal(img.CanonicalJSON, &manifestv2)
-			if err != nil {
-				return err
-			}
-			jsonBytes, err := json.Marshal(manifestv2)
-			if err != nil {
-				return err
-			}
-			prettyJSON.Reset()
-			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
+		prettyJSON.Reset()
+		err = json.Indent(&prettyJSON, img.CanonicalJSON, "", "    ")
+		if err != nil {
+			return err
 		}
+		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		/*
 			prettyJSON.Reset()
 			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")

@@ -39,7 +39,7 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 	// manifest list
 	var foundImages []ImgManifestInspect
 	fd, err := getManifestFd(manifest, transaction)
-	if err != nil && err.Error() != "Cannot open directory" {
+	if err != nil && err.Error() != "cannot open directory" {
 		return nil, err
 	}
 	if fd != nil {
