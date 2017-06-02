@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
 	"github.com/docker/cli/cli"
@@ -40,11 +41,11 @@ func createManifestList(dockerCli *command.DockerCli, args []string, opts annota
 	newRef := args[0]
 	targetRef, err := reference.ParseNormalizedNamed(newRef)
 	if err != nil {
-		return fmt.Errorf("Error parsing name for manifest list (%s): %v", newRef, err)
+		return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", newRef)
 	}
 	_, err = registry.ParseRepositoryInfo(targetRef)
 	if err != nil {
-		return fmt.Errorf("Error parsing repository name for manifest list (%s): %v", newRef, err)
+		return errors.Wrapf(err, "error parsing repository name for manifest list (%s): %v", newRef)
 	}
 
 	// Check locally for this list transaction before proceeding
@@ -56,13 +57,13 @@ func createManifestList(dockerCli *command.DockerCli, args []string, opts annota
 		return err
 	}
 	if len(manifestFiles) > 0 && !opts.amend {
-		return fmt.Errorf("Refusing to continue over an existing manifest list transaction with no --amend flag")
+		return fmt.Errorf("refusing to continue over an existing manifest list transaction with no --amend flag")
 	}
 
 	// Now create the local manifest list transaction by looking up the manifest schemas
 	// for the constituent images:
 	manifests := args[1:]
-	logrus.Info("Retrieving digests of images...")
+	logrus.Info("retrieving digests of images...")
 	for _, manifestRef := range manifests {
 
 		mfstData, _, err := getImageData(dockerCli, manifestRef, targetRef.String(), false)
@@ -72,7 +73,7 @@ func createManifestList(dockerCli *command.DockerCli, args []string, opts annota
 
 		if len(mfstData) > 1 {
 			// too many responses--can only happen if a manifest list was returned for the name lookup
-			return fmt.Errorf("You specified a manifest list entry from a digest that points to a current manifest list. Manifest lists do not allow recursion.")
+			return fmt.Errorf("manifest lists cannot embed another manifest list")
 		}
 
 	}

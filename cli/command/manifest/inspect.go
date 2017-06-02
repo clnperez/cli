@@ -100,7 +100,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 	for _, img := range imgInspect {
 		mfd, _, err := buildManifestObj(targetRepo, img)
 		if err != nil {
-			return fmt.Errorf("Error assembling ManifestDescriptor")
+			return fmt.Errorf("error assembling ManifestDescriptor")
 		}
 		manifests = append(manifests, mfd)
 	}

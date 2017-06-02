@@ -35,7 +35,6 @@ var validOSArches = map[osArch]bool{
 	osArch{os: "linux", arch: "amd64"}:     true,
 	osArch{os: "linux", arch: "arm"}:       true,
 	osArch{os: "linux", arch: "arm64"}:     true,
-	osArch{os: "linux", arch: "ppc64"}:     true,
 	osArch{os: "linux", arch: "ppc64le"}:   true,
 	osArch{os: "linux", arch: "mips64"}:    true,
 	osArch{os: "linux", arch: "mips64le"}:  true,
@@ -103,13 +102,13 @@ func getManifestFd(manifest, transaction string) (*os.File, error) {
 func getFdGeneric(file string) (*os.File, error) {
 	fileinfo, err := os.Stat(file)
 	if err != nil && os.IsNotExist(err) {
-		logrus.Debugf("Manifest file %s not found.", file)
+		logrus.Debugf("manifest file %s not found.", file)
 		return nil, nil
 	} else if err != nil {
 		return nil, err
 	}
 	if fileinfo.IsDir() {
-		return nil, fmt.Errorf("Cannot open directory")
+		return nil, fmt.Errorf("cannot open directory")
 	}
 	fd, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {

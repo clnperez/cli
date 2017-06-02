@@ -8,6 +8,7 @@ import (
 	"github.com/docker/distribution/reference"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -52,11 +53,11 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 	// Make sure the manifests are pulled, find the file you need, unmarshal the json, edit the file, and done.
 	targetRef, err := reference.ParseNormalizedNamed(opts.target)
 	if err != nil {
-		return fmt.Errorf("Annotate: Error parsing name for manifest list (%s): %s", opts.target, err)
+		return errors.Wrapf(err, "annotate: Error parsing name for manifest list (%s): %s", opts.target)
 	}
 	imgRef, err := reference.ParseNormalizedNamed(opts.image)
 	if err != nil {
-		return fmt.Errorf("Annotate: Error prasing name for manifest (%s): %s:", opts.image, err)
+		return errors.Wrapf(err, "annotate: Error prasing name for manifest (%s): %s:", opts.image)
 	}
 
 	// Make sure we've got tags or digests:
@@ -68,7 +69,7 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 	}
 	transactionID := makeFilesafeName(targetRef.String())
 	imgID := makeFilesafeName(imgRef.String())
-	logrus.Debugf("Beginning annotate for %s/%s", transactionID, imgID)
+	logrus.Debugf("beginning annotate for %s/%s", transactionID, imgID)
 
 	imgInspect, _, err := getImageData(dockerCli, imgRef.String(), targetRef.String(), false)
 	if err != nil {
@@ -76,7 +77,7 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 	}
 
 	if len(imgInspect) > 1 {
-		return fmt.Errorf("Cannot annotate manifest list. Please pass an image (not list) name")
+		return fmt.Errorf("cannot annotate manifest list. Please pass an image (not list) name")
 	}
 
 	mf := imgInspect[0]
@@ -105,7 +106,7 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 
 	// validate os/arch input
 	if !isValidOSArch(newMf.OS, newMf.Architecture) {
-		return fmt.Errorf("Manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
+		return fmt.Errorf("manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
 	}
 	// @TODO
 	// dgst := digest.FromBytes(b) can't use b/c not of the json.
@@ -114,7 +115,7 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 		return err
 	}
 
-	logrus.Debugf("Annotated %s with options %v", mf.RefName, opts)
+	logrus.Debugf("annotated %s with options %v", mf.RefName, opts)
 	return nil
 }
 func appendIfUnique(list []string, str string) []string {
