@@ -40,8 +40,8 @@ func newAnnotateCommand(dockerCli *command.DockerCli) *cobra.Command {
 
 	flags.StringVar(&opts.os, "os", "", "Add ios info to a manifest before pushing it.")
 	flags.StringVar(&opts.arch, "arch", "", "Add arch info to a manifest before pushing it.")
-	flags.StringSliceVar(&opts.cpuFeatures, "cpuFeatures", []string{}, "Add feature info to a manifest before pushing it.")
-	flags.StringSliceVar(&opts.osFeatures, "osFeatures", []string{}, "Add feature info to a manifest before pushing it.")
+	flags.StringSliceVar(&opts.cpuFeatures, "cpu-features", []string{}, "Add feature info to a manifest before pushing it.")
+	flags.StringSliceVar(&opts.osFeatures, "os-features", []string{}, "Add feature info to a manifest before pushing it.")
 	flags.StringVar(&opts.variant, "variant", "", "Add arch variant to a manifest before pushing it.")
 
 	return cmd
