@@ -74,7 +74,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		if !opts.verbose {
 			return nil
 		}
@@ -91,7 +91,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+	fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 	if !opts.verbose {
 		return nil
 	}
@@ -137,7 +137,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		case schema2.MediaTypeManifest:
 			var manifestv2 schema2.Manifest
 			err := json.Unmarshal(img.CanonicalJSON, &manifestv2)
@@ -153,7 +153,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		}
 		/*
 			prettyJSON.Reset()
@@ -161,7 +161,7 @@ func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(dockerCli.Out(), "%s\n", prettyJSON.String())
+			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		*/
 	}
 	return nil
