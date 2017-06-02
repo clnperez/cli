@@ -299,40 +299,19 @@ func (mf *v2ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Name
 	}
 	target := mfst.Target()
 
-	configChan := make(chan []byte, 1)
-	errChan := make(chan error, 1)
-	var cancel func()
-	ctx, cancel = context.WithCancel(ctx)
-
 	// Pull the image config
-	go func() {
-		configJSON, err := mf.pullSchema2ImageConfig(ctx, target.Digest)
-		if err != nil {
-			errChan <- ImageConfigPullError{Err: err}
-			cancel()
-			return
-		}
-		configChan <- configJSON
-	}()
-
-	var (
-		configJSON         []byte      // raw serialized image config
-		unmarshalledConfig image.Image // deserialized image config
-	)
-	if runtime.GOOS == "windows" {
-		configJSON, unmarshalledConfig, err = receiveConfig(configChan, errChan)
-		if err != nil {
-			return nil, mfInfo, err
-		}
-		if unmarshalledConfig.RootFS == nil {
-			return nil, mfInfo, errors.New("image config has no rootfs section")
-		}
+	configJSON, err := mf.pullSchema2ImageConfig(ctx, target.Digest)
+	if err != nil {
+		return nil, mfInfo, err
 	}
 
-	if configJSON == nil {
-		configJSON, unmarshalledConfig, err = receiveConfig(configChan, errChan)
-		if err != nil {
-			return nil, mfInfo, err
+	unmarshalledConfig, err := unmarshalConfig(configJSON)
+	if err != nil {
+		return nil, mfInfo, err
+	}
+	if runtime.GOOS == "windows" {
+		if unmarshalledConfig.RootFS == nil {
+			return nil, mfInfo, errors.New("image config has no rootfs section")
 		}
 	}
 
@@ -388,19 +367,12 @@ func (mf *v2ManifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst di
 	return configJSON, nil
 }
 
-func receiveConfig(configChan <-chan []byte, errChan <-chan error) ([]byte, image.Image, error) {
-	select {
-	case configJSON := <-configChan:
-		var unmarshalledConfig image.Image
-		if err := json.Unmarshal(configJSON, &unmarshalledConfig); err != nil {
-			return nil, image.Image{}, err
-		}
-		return configJSON, unmarshalledConfig, nil
-	case err := <-errChan:
-		return nil, image.Image{}, err
-		// Don't need a case for ctx.Done in the select because cancellation
-		// will trigger an error in p.pullSchema2ImageConfig.
+func unmarshalConfig(configJSON []byte) (image.Image, error) {
+	var unmarshalledConfig image.Image
+	if err := json.Unmarshal(configJSON, &unmarshalledConfig); err != nil {
+		return image.Image{}, err
 	}
+	return unmarshalledConfig, nil
 }
 
 // ImageConfigPullError is an error pulling the image config blob
