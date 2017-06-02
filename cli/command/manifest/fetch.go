@@ -10,6 +10,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 
 	"github.com/docker/cli/cli/command"
@@ -105,11 +106,11 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 	)
 
 	if namedRef, err = reference.ParseNormalizedNamed(name); err != nil {
-		return nil, nil, fmt.Errorf("Error parsing reference for %s: %s\n", name, err)
+		return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s\n", name)
 	}
 	if transactionID != "" {
 		if transactionNamed, err = reference.ParseNormalizedNamed(transactionID); err != nil {
-			return nil, nil, fmt.Errorf("Error parsing reference for %s: %s\n", transactionID, err)
+			return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s\n", transactionID)
 		}
 		if _, isDigested := transactionNamed.(reference.Canonical); !isDigested {
 			transactionNamed = reference.TagNameOnly(transactionNamed)

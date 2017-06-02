@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"runtime"
 
-	digest "github.com/opencontainers/go-digest"
+	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/distribution"
@@ -20,7 +20,7 @@ import (
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/image/v1"
 	"github.com/docker/docker/registry"
-	"golang.org/x/net/context"
+	digest "github.com/opencontainers/go-digest"
 )
 
 type v2ManifestFetcher struct {

@@ -14,16 +14,16 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
-
-	digest "github.com/opencontainers/go-digest"
 
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/registry/api/v2"
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/transport"
+	digest "github.com/opencontainers/go-digest"
 
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
@@ -125,19 +125,19 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	// First get all the info we'll need from either a yaml file, or a user's locally-creatd manifest transation.
 	numArgs := len(args)
 	if numArgs > 1 {
-		return fmt.Errorf("More than one argument provided to 'manifest push'")
+		return fmt.Errorf("more than one argument provided to 'manifest push'")
 	}
 	if (numArgs == 0) && (opts.file == "") {
-		return fmt.Errorf("Please push using a yaml file or a list created using 'manifest create.'")
+		return fmt.Errorf("please push using a yaml file or a list created using 'manifest create.'")
 	}
 	if opts.file != "" {
 		yamlInput, err = getYamlInput(dockerCli, opts.file)
 		if err != nil {
-			return fmt.Errorf("Error retrieving manifests from YAML file: %s", err)
+			return errors.Wrap(err, "error retrieving manifests from YAML file")
 		}
 		targetRef, err = reference.ParseNormalizedNamed(yamlInput.Image)
 		if err != nil {
-			return fmt.Errorf("Error parsing name for manifest list (%s): %v", yamlInput.Image, err)
+			return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", yamlInput.Image)
 		}
 		if _, isDigested := targetRef.(reference.Canonical); !isDigested {
 			targetRef = reference.TagNameOnly(targetRef)
@@ -145,7 +145,7 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	} else {
 		targetRef, err = reference.ParseNormalizedNamed(args[0])
 		if err != nil {
-			return fmt.Errorf("Error parsing name for manifest list (%s): %v", args[0], err)
+			return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", args[0])
 		}
 		if _, isDigested := targetRef.(reference.Canonical); !isDigested {
 			targetRef = reference.TagNameOnly(targetRef)
@@ -162,11 +162,11 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	}
 	targetRepo, err := registry.ParseRepositoryInfo(targetRef)
 	if err != nil {
-		return fmt.Errorf("Error parsing repository name for manifest list (%s): %v", opts.newRef, err)
+		return errors.Wrapf(err, "error parsing repository name for manifest list (%s): %v", opts.newRef)
 	}
 	targetEndpoint, targetRepoName, err := setupRepo(targetRepo)
 	if err != nil {
-		return fmt.Errorf("Error setting up repository endpoint and references for %q: %v", targetRef, err)
+		return errors.Wrapf(err, "error setting up repository endpoint and references for %q: %v", targetRef)
 	}
 
 	// Now that targetRepo is set, jump through a lot of hoops to get a Named reference without
@@ -183,13 +183,13 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	}
 	targetRef, _ = reference.WithTag(bareRef, tag)
 
-	logrus.Debugf("Creating target ref: %s", targetRef.String())
+	logrus.Debugf("creating target ref: %s", targetRef.String())
 
 	ctx := context.Background()
 
 	// Now create the manifest list payload by looking up the manifest schemas
 	// for the constituent images:
-	logrus.Info("Retrieving digests of images...")
+	logrus.Info("retrieving digests of images...")
 	if opts.file == "" {
 		// manifests is a list of file paths
 		for _, manifestFile := range manifests {
@@ -200,7 +200,7 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 				return err
 			}
 			if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
-				return fmt.Errorf("Malformed manifest object. Cannot push to registry.")
+				return fmt.Errorf("malformed manifest object. cannot push to registry")
 			}
 			manifest, repoInfo, err := buildManifestObj(targetRepo, mfstInspect)
 			if err != nil {
@@ -227,52 +227,52 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	urlBuilder, err := v2.NewURLBuilderFromString(targetEndpoint.URL.String(), false)
 	logrus.Infof("manifest: put: target endpoint url: %s", targetEndpoint.URL.String())
 	if err != nil {
-		return fmt.Errorf("Can't create URL builder from endpoint (%s): %v", targetEndpoint.URL.String(), err)
+		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetEndpoint.URL.String())
 	}
 	pushURL, err := createManifestURLFromRef(targetRef, urlBuilder)
 	if err != nil {
-		return fmt.Errorf("Error setting up repository endpoint and references for %q: %v", targetRef, err)
+		return errors.Wrapf(err, "error setting up repository endpoint and references for %q: %v", targetRef)
 	}
-	logrus.Debugf("Manifest list push url: %s", pushURL)
+	logrus.Debugf("manifest list push url: %s", pushURL)
 
 	deserializedManifestList, err := manifestlist.FromDescriptors(manifestList.Manifests)
 	if err != nil {
-		return fmt.Errorf("Cannot deserialize manifest list: %v", err)
+		return errors.Wrap(err, "cannot deserialize manifest list")
 	}
 	mediaType, p, err := deserializedManifestList.Payload()
 	logrus.Debugf("mediaType of manifestList: %s", mediaType)
 	if err != nil {
-		return fmt.Errorf("Cannot retrieve payload for HTTP PUT of manifest list: %v", err)
+		return errors.Wrap(err, "cannot retrieve payload for HTTP PUT of manifest list")
 
 	}
 	putRequest, err := http.NewRequest("PUT", pushURL, bytes.NewReader(p))
 	if err != nil {
-		return fmt.Errorf("HTTP PUT request creation failed: %v", err)
+		return errors.Wrap(err, "HTTP PUT request creation failed")
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
 	httpClient, err := getHTTPClient(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
 	if err != nil {
-		return fmt.Errorf("Failed to setup HTTP client to repository: %v", err)
+		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
 
 	// before we push the manifest list, if we have any blob mount requests, we need
 	// to ask the registry to mount those blobs in our target so they are available
 	// as references
 	if err := mountBlobs(httpClient, urlBuilder, targetRef, blobMountRequests); err != nil {
-		return fmt.Errorf("Couldn't mount blobs for cross-repository push: %v", err)
+		return errors.Wrap(err, "couldn't mount blobs for cross-repository push")
 	}
 
 	// we also must push any manifests that are referenced in the manifest list into
 	// the target namespace
 	// Use the untagged target for this so the digest is used
 	if err := pushReferences(httpClient, urlBuilder, bareRef, manifestRequests); err != nil {
-		return fmt.Errorf("Couldn't push manifests referenced in our manifest list: %v", err)
+		return errors.Wrap(err, "couldn't push manifests referenced in our manifest list")
 	}
 
 	resp, err := httpClient.Do(putRequest)
 	if err != nil {
-		return fmt.Errorf("V2 registry PUT of manifest list failed: %v", err)
+		return errors.Wrap(err, "v2 registry PUT of manifest list failed")
 	}
 	defer resp.Body.Close()
 
@@ -283,33 +283,33 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 			return err
 		}
 		if opts.purge == true {
-			logrus.Debugf("Deleting files at %s", targetFilename)
+			logrus.Debugf("deleting files at %s", targetFilename)
 			if err := os.RemoveAll(targetFilename); err != nil {
 				// Not a fatal error
-				logrus.Info("Unable to clean up manifest files in %s", targetFilename)
+				logrus.Info("unable to clean up manifest files in %s", targetFilename)
 			}
 		}
-		logrus.Infof("Succesfully pushed manifest list %s with digest %s", targetRef, dgst)
+		logrus.Infof("succesfully pushed manifest list %s with digest %s", targetRef, dgst)
 		return nil
 	}
-	return fmt.Errorf("Registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
+	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
 }
 
 func getYamlInput(dockerCli *command.DockerCli, yamlFile string) (YamlInput, error) {
 	logrus.Debugf("YAML file: %s", yamlFile)
 
 	if _, err := os.Stat(yamlFile); err != nil {
-		logrus.Debugf("Unable to open file: %s", yamlFile)
+		logrus.Debugf("unable to open file: %s", yamlFile)
 	}
 
 	var yamlInput YamlInput
 	yamlBuf, err := ioutil.ReadFile(yamlFile)
 	if err != nil {
-		logrus.Fatalf(fmt.Sprintf("Can't read YAML file %q: %v", yamlFile, err))
+		logrus.Fatalf(fmt.Sprintf("can't read YAML file %q: %v", yamlFile, err))
 	}
 	err = yaml.Unmarshal(yamlBuf, &yamlInput)
 	if err != nil {
-		logrus.Fatalf(fmt.Sprintf("Can't unmarshal YAML file %q: %v", yamlFile, err))
+		logrus.Fatalf(fmt.Sprintf("can't unmarshal YAML file %q: %v", yamlFile, err))
 	}
 	return yamlInput, nil
 }
@@ -328,7 +328,7 @@ func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect ImgManifest
 	manifestRepoHostname := reference.Domain(repoInfo.Name)
 	targetRepoHostname := reference.Domain(targetRepo.Name)
 	if manifestRepoHostname != targetRepoHostname {
-		return manifestlist.ManifestDescriptor{}, nil, fmt.Errorf("Cannot use source images from a different registry than the target image: %s != %s", manifestRepoHostname, targetRepoHostname)
+		return manifestlist.ManifestDescriptor{}, nil, fmt.Errorf("cannot use source images from a different registry than the target image: %s != %s", manifestRepoHostname, targetRepoHostname)
 	}
 
 	manifest := manifestlist.ManifestDescriptor{
@@ -347,7 +347,7 @@ func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect ImgManifest
 
 	err = manifest.Descriptor.Digest.Validate()
 	if err != nil {
-		return manifestlist.ManifestDescriptor{}, nil, fmt.Errorf("Digest parse of image %q failed with error: %v", manifestRef, err)
+		return manifestlist.ManifestDescriptor{}, nil, errors.Wrapf(err, "Digest parse of image %q failed with error: %v", manifestRef)
 	}
 
 	return manifest, repoInfo, nil
@@ -360,12 +360,12 @@ func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, 
 		manifestRequests  []manifestPush
 	)
 
-	logrus.Debugf("Adding manifest references of %q to blob mount requests to %s", mfRepoName, targetRepoName)
+	logrus.Debugf("adding manifest references of %q to blob mount requests to %s", mfRepoName, targetRepoName)
 	for _, layer := range mfstInspect.References {
 		blobMountRequests = append(blobMountRequests, blobMount{FromRepo: mfRepoName, Digest: layer})
 	}
 	// also must add the manifest to be pushed in the target namespace
-	logrus.Debugf("Adding manifest %q -> to be pushed to %q as a manifest reference", mfRepoName, targetRepoName)
+	logrus.Debugf("adding manifest %q -> to be pushed to %q as a manifest reference", mfRepoName, targetRepoName)
 	manifestRequests = append(manifestRequests, manifestPush{
 		Name:      mfRepoName,
 		Digest:    mfstInspect.Digest.String(),
@@ -396,7 +396,7 @@ func getHTTPClient(ctx context.Context, dockerCli *command.DockerCli, repoInfo *
 	authTransport := transport.NewTransport(base, modifiers...)
 	challengeManager, _, err := registry.PingV2Registry(endpoint.URL, authTransport)
 	if err != nil {
-		return nil, fmt.Errorf("Ping of V2 registry failed: %v", err)
+		return nil, errors.Wrap(err, "ping of V2 registry failed")
 	}
 	if authConfig.RegistryToken != "" {
 		passThruTokenHandler := &existingTokenHandler{token: authConfig.RegistryToken}
@@ -422,7 +422,7 @@ func createManifestURLFromRef(targetRef reference.Named, urlBuilder *v2.URLBuild
 
 	manifestURL, err := urlBuilder.BuildManifestURL(targetRef)
 	if err != nil {
-		return "", fmt.Errorf("Failed to build manifest URL from target reference: %v", err)
+		return "", errors.Wrap(err, "failed to build manifest URL from target reference")
 	}
 	return manifestURL, nil
 }
@@ -475,23 +475,23 @@ func loadLocalInsecureRegistries() ([]string, error) {
 	// local config and what the daemon they're talking to allows, but we can be okay with that.
 	userHome, err := homedir.GetStatic()
 	if err != nil {
-		return []string{}, fmt.Errorf("Manifest create: lookup local insecure registries: Unable to retreive $HOME")
+		return []string{}, fmt.Errorf("manifest create: lookup local insecure registries: Unable to retreive $HOME")
 	}
 
 	jsonData, err := ioutil.ReadFile(fmt.Sprintf("%s/.docker/config.json", userHome))
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return []string{}, fmt.Errorf("Manifest create: Unable to read $HOME/.docker/config.json: %s", err)
+			return []string{}, errors.Wrap(err, "manifest create: Unable to read $HOME/.docker/config.json")
 		}
 		// If the file just doesn't exist, no insecure registries were specified.
-		logrus.Debug("Manifest: No insecure registries were specified via $HOME/.docker/config.json")
+		logrus.Debug("manifest: no insecure registries were specified via $HOME/.docker/config.json")
 		return []string{}, nil
 	}
 
 	if jsonData != nil {
 		cf := configfile.ConfigFile{}
 		if err := json.Unmarshal(jsonData, &cf); err != nil {
-			logrus.Debugf("Manifest create: Unable to unmarshal insecure registries from $HOME/.docker/config.json: %s", err)
+			logrus.Debugf("manifest create: Unable to unmarshal insecure registries from $HOME/.docker/config.json: %s", err)
 			return []string{}, nil
 		}
 		if cf.InsecureRegistries == nil {
@@ -506,7 +506,7 @@ func loadLocalInsecureRegistries() ([]string, error) {
 			} else if ips, err := net.LookupHost(reg); err == nil {
 				insecureRegistries = append(insecureRegistries, ips...)
 			} else {
-				return []string{}, fmt.Errorf("Manifest create: Invalid registry (%s) specified in ~/.docker/config.json: %s", reg, err)
+				return []string{}, errors.Wrapf(err, "manifest create: Invalid registry (%s) specified in ~/.docker/config.json: %s", reg)
 			}
 		}
 	}
@@ -519,40 +519,40 @@ func pushReferences(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref refe
 		dgst, err := digest.Parse(manifest.Digest)
 		logrus.Debugf("pushing ref digest %s", dgst)
 		if err != nil {
-			return fmt.Errorf("Error parsing manifest digest (%s) for referenced manifest %q: %v", manifest.Digest, manifest.Name, err)
+			return errors.Wrapf(err, "error parsing manifest digest (%s) for referenced manifest %q: %v", manifest.Digest, manifest.Name)
 		}
 		targetRef, err := reference.WithDigest(ref, dgst)
 		logrus.Debugf("pushing ref %v", targetRef)
 		if err != nil {
-			return fmt.Errorf("Error creating manifest digest target for referenced manifest %q: %v", manifest.Name, err)
+			return errors.Wrapf(err, "error creating manifest digest target for referenced manifest %q: %v", manifest.Name)
 		}
 		pushURL, err := urlBuilder.BuildManifestURL(targetRef)
 		if err != nil {
-			return fmt.Errorf("Error setting up manifest push URL for manifest references for %q: %v", manifest.Name, err)
+			return errors.Wrapf(err, "error setting up manifest push URL for manifest references for %q: %v", manifest.Name)
 		}
 		logrus.Debugf("manifest reference push URL: %s", pushURL)
 
 		pushRequest, err := http.NewRequest("PUT", pushURL, bytes.NewReader(manifest.JSONBytes))
 		if err != nil {
-			return fmt.Errorf("HTTP PUT request creation for manifest reference push failed: %v", err)
+			return errors.Wrap(err, "HTTP PUT request creation for manifest reference push failed")
 		}
 		pushRequest.Header.Set("Content-Type", manifest.MediaType)
 		resp, err := httpClient.Do(pushRequest)
 		if err != nil {
-			return fmt.Errorf("PUT of manifest reference failed: %v", err)
+			return errors.Wrap(err, "PUT of manifest reference failed")
 		}
 
 		resp.Body.Close()
 		if !statusSuccess(resp.StatusCode) {
-			return fmt.Errorf("Referenced manifest push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
+			return fmt.Errorf("referenced manifest push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
 		}
 		dgstHeader := resp.Header.Get("Docker-Content-Digest")
 		dgstResult, err := digest.Parse(dgstHeader)
 		if err != nil {
-			return fmt.Errorf("Couldn't parse pushed manifest digest response: %v", err)
+			return errors.Wrap(err, "couldn't parse pushed manifest digest response")
 		}
 		if string(dgstResult) != manifest.Digest {
-			return fmt.Errorf("Pushed referenced manifest received a different digest: expected %s, got %s", manifest.Digest, string(dgst))
+			return fmt.Errorf("pushed referenced manifest received a different digest: expected %s, got %s", manifest.Digest, string(dgst))
 		}
 		logrus.Debugf("referenced manifest %q pushed; digest matches: %s", manifest.Name, string(dgst))
 	}
@@ -565,23 +565,23 @@ func mountBlobs(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref referenc
 		// create URL request
 		url, err := urlBuilder.BuildBlobUploadURL(ref, url.Values{"from": {blob.FromRepo}, "mount": {blob.Digest}})
 		if err != nil {
-			return fmt.Errorf("Failed to create blob mount URL: %v", err)
+			return errors.Wrap(err, "failed to create blob mount URL")
 		}
 		mountRequest, err := http.NewRequest("POST", url, nil)
 		if err != nil {
-			return fmt.Errorf("HTTP POST request creation for blob mount failed: %v", err)
+			return errors.Wrap(err, "HTTP POST request creation for blob mount failed")
 		}
 		mountRequest.Header.Set("Content-Length", "0")
 		resp, err := httpClient.Do(mountRequest)
 		if err != nil {
-			return fmt.Errorf("V2 registry POST of blob mount failed: %v", err)
+			return errors.Wrap(err, "v2 registry POST of blob mount failed")
 		}
 
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("Blob mount failed to url %s: HTTP status %d", url, resp.StatusCode)
+			return fmt.Errorf("blob mount failed to url %s: HTTP status %d", url, resp.StatusCode)
 		}
-		logrus.Debugf("Mount of blob %s succeeded, location: %q", blob.Digest, resp.Header.Get("Location"))
+		logrus.Debugf("mount of blob %s succeeded, location: %q", blob.Digest, resp.Header.Get("Location"))
 	}
 	return nil
 }

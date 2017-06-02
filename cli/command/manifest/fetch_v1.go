@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	errorsp "github.com/pkg/errors"
+	"golang.org/x/net/context"
+
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/reference"
@@ -20,7 +23,6 @@ import (
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/image/v1"
 	"github.com/docker/docker/registry"
-	"golang.org/x/net/context"
 )
 
 type v1ManifestFetcher struct {
@@ -146,7 +148,7 @@ func (mf *v1ManifestFetcher) fetchWithSession(ctx context.Context, ref reference
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Error pulling image (%s) from %s, %v", img.Tag, mf.repoInfo.Name.Name(), err)
+		return nil, errorsp.Wrapf(err, "Error pulling image (%s) from %s, %v", img.Tag, mf.repoInfo.Name.Name())
 	}
 	if pulledImg == nil {
 		return nil, fmt.Errorf("No such image %s:%s", mf.repoInfo.Name.Name(), tag)
