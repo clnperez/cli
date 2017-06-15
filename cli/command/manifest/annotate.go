@@ -13,13 +13,12 @@ import (
 )
 
 type annotateOptions struct {
-	target      string // the target manifest list name (also transaction ID)
-	image       string // the manifest to annotate within the list
-	variant     string // an architecture variant
-	os          string
-	arch        string
-	cpuFeatures []string
-	osFeatures  []string
+	target     string // the target manifest list name (also transaction ID)
+	image      string // the manifest to annotate within the list
+	variant    string // an architecture variant
+	os         string
+	arch       string
+	osFeatures []string
 }
 
 // NewAnnotateCommand creates a new `docker manifest annotate` command
@@ -41,7 +40,6 @@ func newAnnotateCommand(dockerCli *command.DockerCli) *cobra.Command {
 
 	flags.StringVar(&opts.os, "os", "", "Add ios info to a manifest before pushing it.")
 	flags.StringVar(&opts.arch, "arch", "", "Add arch info to a manifest before pushing it.")
-	flags.StringSliceVar(&opts.cpuFeatures, "cpu-features", []string{}, "Add feature info to a manifest before pushing it.")
 	flags.StringSliceVar(&opts.osFeatures, "os-features", []string{}, "Add feature info to a manifest before pushing it.")
 	flags.StringVar(&opts.variant, "variant", "", "Add arch variant to a manifest before pushing it.")
 
@@ -94,9 +92,6 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 	if opts.arch != "" {
 		newMf.Architecture = opts.arch
 	}
-	for _, cpuFeature := range opts.cpuFeatures {
-		newMf.Features = appendIfUnique(mf.Features, cpuFeature)
-	}
 	for _, osFeature := range opts.osFeatures {
 		newMf.OSFeatures = appendIfUnique(mf.OSFeatures, osFeature)
 	}
@@ -108,8 +103,6 @@ func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) err
 	if !isValidOSArch(newMf.OS, newMf.Architecture) {
 		return fmt.Errorf("manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
 	}
-	// @TODO
-	// dgst := digest.FromBytes(b) can't use b/c not of the json.
 
 	if err := updateMfFile(newMf, imgID, transactionID); err != nil {
 		return err
