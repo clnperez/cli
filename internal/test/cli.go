@@ -8,19 +8,23 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
+	manifeststore "github.com/docker/cli/cli/manifest/store"
+	registryclient "github.com/docker/cli/cli/registry/client"
 	"github.com/docker/docker/client"
 )
 
 // FakeCli emulates the default DockerCli
 type FakeCli struct {
 	command.DockerCli
-	client     client.APIClient
-	configfile *configfile.ConfigFile
-	out        *command.OutStream
-	outBuffer  *bytes.Buffer
-	err        *bytes.Buffer
-	in         *command.InStream
-	server     command.ServerInfo
+	client         client.APIClient
+	configfile     *configfile.ConfigFile
+	out            *command.OutStream
+	outBuffer      *bytes.Buffer
+	err            *bytes.Buffer
+	in             *command.InStream
+	server         command.ServerInfo
+	manifestStore  manifeststore.Store
+	registryClient registryclient.RegistryClient
 }
 
 // NewFakeCli returns a fake for the command.Cli interface
@@ -90,4 +94,24 @@ func (c *FakeCli) OutBuffer() *bytes.Buffer {
 // ErrBuffer Buffer returns the stderr buffer
 func (c *FakeCli) ErrBuffer() *bytes.Buffer {
 	return c.err
+}
+
+// ManifestStore returns a fake store used for testing
+func (c *FakeCli) ManifestStore() manifeststore.Store {
+	return c.manifestStore
+}
+
+// RegistryClient returns a fake client for testing
+func (c *FakeCli) RegistryClient() registryclient.RegistryClient {
+	return c.registryClient
+}
+
+// SetManifestStore on the fake cli
+func (c *FakeCli) SetManifestStore(store manifeststore.Store) {
+	c.manifestStore = store
+}
+
+// SetRegistryClient on the fake cli
+func (c *FakeCli) SetRegistryClient(client registryclient.RegistryClient) {
+	c.registryClient = client
 }
