@@ -25,10 +25,6 @@ import (
 	"github.com/docker/docker/registry"
 )
 
-type fetchOptions struct {
-	remote string
-}
-
 type manifestFetcher interface {
 	Fetch(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error)
 }
@@ -85,14 +81,15 @@ func storeManifest(imgInspect ImgManifestInspect, name, transaction string) erro
 	os.MkdirAll(filepath.Join(manifestBase, transaction), 0755)
 	logrus.Debugf("Storing  %s", name)
 	if err = updateMfFile(imgInspect, name, transaction); err != nil {
-		fmt.Printf("Error writing local manifest copy: %s\n", err)
+		fmt.Printf("Error writing local manifest copy: %s", err)
 		return err
 	}
 
 	return nil
 }
 
-func getImageData(dockerCli *command.DockerCli, name string, transactionID string, fetchOnly bool) ([]ImgManifestInspect, *registry.RepositoryInfo, error) {
+// nolint: gocyclo
+func getImageData(dockerCli command.Cli, name string, transactionID string, fetchOnly bool) ([]ImgManifestInspect, *registry.RepositoryInfo, error) {
 
 	var (
 		lastErr                    error
@@ -106,11 +103,11 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 	)
 
 	if namedRef, err = reference.ParseNormalizedNamed(name); err != nil {
-		return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s\n", name)
+		return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s", name)
 	}
 	if transactionID != "" {
 		if transactionNamed, err = reference.ParseNormalizedNamed(transactionID); err != nil {
-			return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s\n", transactionID)
+			return nil, nil, errors.Wrapf(err, "Error parsing reference for %s: %s", transactionID)
 		}
 		if _, isDigested := transactionNamed.(reference.Canonical); !isDigested {
 			transactionNamed = reference.TagNameOnly(transactionNamed)
@@ -229,7 +226,7 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 				}
 				continue
 			}
-			logrus.Errorf("Not continuing with pull after error: %v", err)
+			logrus.Errorf("not continuing with pull after error: %v", err)
 			return nil, nil, err
 		}
 
@@ -241,14 +238,14 @@ func getImageData(dockerCli *command.DockerCli, name string, transactionID strin
 		// image name *and* a transaction ID. IOW, foundImages will be only one image.
 		if !fetchOnly {
 			if err := storeManifest(foundImages[0], makeFilesafeName(normalName), transactionID); err != nil {
-				logrus.Errorf("error storing manifests: %s\n", err)
+				logrus.Errorf("error storing manifests: %s", err)
 			}
 		}
 		return foundImages, repoInfo, nil
 	}
 
 	if lastErr == nil {
-		lastErr = fmt.Errorf("no endpoints found for %s\n", normalName)
+		lastErr = fmt.Errorf("no endpoints found for %s", normalName)
 	}
 
 	return nil, nil, lastErr

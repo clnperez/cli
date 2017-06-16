@@ -21,7 +21,7 @@ type inspectOptions struct {
 }
 
 // NewInspectCommand creates a new `docker manifest inspect` command
-func newInspectCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newInspectCommand(dockerCli command.Cli) *cobra.Command {
 	var opts inspectOptions
 
 	cmd := &cobra.Command{
@@ -41,7 +41,7 @@ func newInspectCommand(dockerCli *command.DockerCli) *cobra.Command {
 	return cmd
 }
 
-func runListInspect(dockerCli *command.DockerCli, opts inspectOptions) error {
+func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 
 	// Get the data and then format it
 	var (

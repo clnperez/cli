@@ -154,10 +154,11 @@ func (mf *v2ManifestFetcher) fetchWithRepository(ctx context.Context, ref refere
 	return imageList, nil
 }
 
-func (mf *v2ManifestFetcher) pullSchema1(ctx context.Context, ref reference.Named, unverifiedManifest *schema1.SignedManifest) (img *image.Image, mfInfo manifestInfo, err error) {
+func (mf *v2ManifestFetcher) pullSchema1(ctx context.Context, namedRef fmt.Stringer, unverifiedManifest *schema1.SignedManifest) (img *image.Image, mfInfo manifestInfo, err error) {
+
 	mfInfo = manifestInfo{}
 	var verifiedManifest *schema1.Manifest
-	verifiedManifest, err = verifySchema1Manifest(unverifiedManifest, ref)
+	verifiedManifest, err = verifySchema1Manifest(unverifiedManifest, namedRef)
 	if err != nil {
 		return nil, mfInfo, err
 	}
@@ -191,6 +192,9 @@ func (mf *v2ManifestFetcher) pullSchema1(ctx context.Context, ref reference.Name
 
 	rootFS := image.NewRootFS()
 	configRaw, err := makeRawConfigFromV1Config([]byte(verifiedManifest.History[0].V1Compatibility), rootFS, history)
+	if err != nil {
+		return nil, mfInfo, err
+	}
 
 	config, err := json.Marshal(configRaw)
 	if err != nil {
@@ -213,7 +217,7 @@ func (mf *v2ManifestFetcher) pullSchema1(ctx context.Context, ref reference.Name
 	return img, mfInfo, nil
 }
 
-func verifySchema1Manifest(signedManifest *schema1.SignedManifest, ref reference.Named) (m *schema1.Manifest, err error) {
+func verifySchema1Manifest(signedManifest *schema1.SignedManifest, ref fmt.Stringer) (m *schema1.Manifest, err error) {
 	// If pull by digest, then verify the manifest digest. NOTE: It is
 	// important to do this first, before any other content validation. If the
 	// digest cannot be verified, don't even bother with those other things.
@@ -262,7 +266,7 @@ func fixManifestLayers(m *schema1.Manifest) error {
 
 	if imgs[len(imgs)-1].Parent != "" && runtime.GOOS != "windows" {
 		// Windows base layer can point to a base layer parent that is not in manifest.
-		return errors.New("invalid parent ID in the base layer of the image.")
+		return errors.New("invalid parent ID in the base layer of the image")
 	}
 
 	// check general duplicates to error instead of a deadlock
@@ -284,7 +288,7 @@ func fixManifestLayers(m *schema1.Manifest) error {
 			m.FSLayers = append(m.FSLayers[:i], m.FSLayers[i+1:]...)
 			m.History = append(m.History[:i], m.History[i+1:]...)
 		} else if imgs[i].Parent != imgs[i+1].ID {
-			return fmt.Errorf("invalid parent ID. Expected %v, got %v.", imgs[i+1].ID, imgs[i].Parent)
+			return fmt.Errorf("invalid parent ID. Expected %v, got %v", imgs[i+1].ID, imgs[i].Parent)
 		}
 	}
 

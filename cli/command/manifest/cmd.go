@@ -10,7 +10,9 @@ import (
 )
 
 // NewManifestCommand returns a cobra command for `manifest` subcommands
+// nolint: interfacer
 func NewManifestCommand(dockerCli *command.DockerCli) *cobra.Command {
+	// use dockerCli as command.Cli
 	cmd := &cobra.Command{
 		Use:   "manifest COMMAND",
 		Short: "Manage Docker image manifests and lists",
@@ -21,7 +23,6 @@ func NewManifestCommand(dockerCli *command.DockerCli) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(
-		//newListFetchCommand(dockerCli),
 		newCreateListCommand(dockerCli),
 		newInspectCommand(dockerCli),
 		newAnnotateCommand(dockerCli),
