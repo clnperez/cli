@@ -29,7 +29,6 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/registry"
@@ -52,10 +51,6 @@ func (th *existingTokenHandler) AuthorizeRequest(req *http.Request, params map[s
 
 func (th *existingTokenHandler) Scheme() string {
 	return "bearer"
-}
-
-type dumbCredentialStore struct {
-	auth *types.AuthConfig
 }
 
 // YamlInput represents the YAML format input to the pushml
@@ -90,7 +85,7 @@ type manifestPush struct {
 	MediaType string
 }
 
-func newPushListCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 	opts := pushOpts{}
 
@@ -110,7 +105,7 @@ func newPushListCommand(dockerCli *command.DockerCli) *cobra.Command {
 	return cmd
 }
 
-func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string) error {
+func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error {
 	var (
 		manifests         []string
 		manifestList      manifestlist.ManifestList
@@ -131,7 +126,7 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 		return fmt.Errorf("please push using a yaml file or a list created using 'manifest create.'")
 	}
 	if opts.file != "" {
-		yamlInput, err = getYamlInput(dockerCli, opts.file)
+		yamlInput, err = getYamlInput(opts.file)
 		if err != nil {
 			return errors.Wrap(err, "error retrieving manifests from YAML file")
 		}
@@ -295,7 +290,7 @@ func putManifestList(dockerCli *command.DockerCli, opts pushOpts, args []string)
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
 }
 
-func getYamlInput(dockerCli *command.DockerCli, yamlFile string) (YamlInput, error) {
+func getYamlInput(yamlFile string) (YamlInput, error) {
 	logrus.Debugf("YAML file: %s", yamlFile)
 
 	if _, err := os.Stat(yamlFile); err != nil {
@@ -376,7 +371,7 @@ func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, 
 	return blobMountRequests, manifestRequests
 }
 
-func getHTTPClient(ctx context.Context, dockerCli *command.DockerCli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (*http.Client, error) {
+func getHTTPClient(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (*http.Client, error) {
 	// get the http transport, this will be used in a client to upload manifest
 	// TODO - add separate function get client
 	base := &http.Transport{
