@@ -17,7 +17,7 @@ type annotateOpts struct {
 	amend bool
 }
 
-func newCreateListCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newCreateListCommand(dockerCli command.Cli) *cobra.Command {
 
 	opts := annotateOpts{}
 
@@ -35,7 +35,7 @@ func newCreateListCommand(dockerCli *command.DockerCli) *cobra.Command {
 	return cmd
 }
 
-func createManifestList(dockerCli *command.DockerCli, args []string, opts annotateOpts) error {
+func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts) error {
 
 	// Just do some basic verification here, and leave the rest for when the user pushes the list
 	newRef := args[0]

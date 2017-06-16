@@ -22,7 +22,7 @@ type annotateOptions struct {
 }
 
 // NewAnnotateCommand creates a new `docker manifest annotate` command
-func newAnnotateCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newAnnotateCommand(dockerCli command.Cli) *cobra.Command {
 	var opts annotateOptions
 
 	cmd := &cobra.Command{
@@ -46,7 +46,7 @@ func newAnnotateCommand(dockerCli *command.DockerCli) *cobra.Command {
 	return cmd
 }
 
-func runManifestAnnotate(dockerCli *command.DockerCli, opts annotateOptions) error {
+func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 
 	// Make sure the manifests are pulled, find the file you need, unmarshal the json, edit the file, and done.
 	targetRef, err := reference.ParseNormalizedNamed(opts.target)
