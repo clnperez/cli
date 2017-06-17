@@ -107,14 +107,12 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error {
 	var (
-		manifests         []string
-		manifestList      manifestlist.ManifestList
-		targetRef         reference.Named
-		blobMountRequests []blobMount
-		manifestRequests  []manifestPush
-		err               error
-		yamlInput         YamlInput
-		targetFilename    string
+		manifests                         []string
+		manifestList                      manifestlist.ManifestList
+		fullTargetRef, targetRef, bareRef reference.Named
+		blobMountRequests                 []blobMount
+		manifestRequests                  []manifestPush
+		err                               error
 	)
 
 	// First get all the info we'll need from either a yaml file, or a user's locally-creatd manifest transation.
@@ -125,37 +123,20 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	if (numArgs == 0) && (opts.file == "") {
 		return fmt.Errorf("please push using a yaml file or a list created using 'manifest create.'")
 	}
-	if opts.file != "" {
-		yamlInput, err = getYamlInput(opts.file)
-		if err != nil {
-			return errors.Wrap(err, "error retrieving manifests from YAML file")
-		}
-		targetRef, err = reference.ParseNormalizedNamed(yamlInput.Image)
-		if err != nil {
-			return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", yamlInput.Image)
-		}
-		if _, isDigested := targetRef.(reference.Canonical); !isDigested {
-			targetRef = reference.TagNameOnly(targetRef)
-		}
-	} else {
-		targetRef, err = reference.ParseNormalizedNamed(args[0])
-		if err != nil {
-			return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", args[0])
-		}
-		if _, isDigested := targetRef.(reference.Canonical); !isDigested {
-			targetRef = reference.TagNameOnly(targetRef)
-		}
-		manifests, err = getListFilenames(targetRef.String())
+	fullTargetRef, targetRef, bareRef, err = constructTargetRefs(args, opts)
+	if err != nil {
+		return err
+	}
+	if opts.file == "" {
+		manifests, err = getListFilenames(fullTargetRef.String())
 		if err != nil {
 			return err
 		}
 		if len(manifests) == 0 {
-			return fmt.Errorf("%s not found", targetRef.String())
+			return fmt.Errorf("%s not found", fullTargetRef.String())
 		}
-		// Set this now, for purging the dir later, because we alter it below to use for the pushURL
-		targetFilename, _ = mfToFilename(targetRef.String(), "")
 	}
-	targetRepo, err := registry.ParseRepositoryInfo(targetRef)
+	targetRepo, err := registry.ParseRepositoryInfo(fullTargetRef)
 	if err != nil {
 		return errors.Wrapf(err, "error parsing repository name for manifest list (%s): %v", opts.newRef)
 	}
@@ -164,21 +145,11 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		return errors.Wrapf(err, "error setting up repository endpoint and references for %q: %v", targetRef)
 	}
 
-	// Now that targetRepo is set, jump through a lot of hoops to get a Named reference without
-	// the domain included (targetRef), and one without the tag (bareRef)
-	tagIndex := strings.LastIndex(targetRef.String(), ":")
-	if tagIndex < 0 {
-		targetRef = reference.TagNameOnly(targetRef)
-		tagIndex = strings.IndexRune(targetRef.String(), ':')
-	}
-	tag := targetRef.String()[tagIndex+1:]
-	bareRef, err := reference.WithName(reference.Path(targetRef))
 	if err != nil {
 		return err
 	}
-	targetRef, _ = reference.WithTag(bareRef, tag)
 
-	logrus.Debugf("creating target ref: %s", targetRef.String())
+	logrus.Debugf("creating target ref: %s", fullTargetRef.String())
 
 	ctx := context.Background()
 
@@ -212,9 +183,8 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 				manifestRequests = append(manifestRequests, mr...)
 			}
 		}
-		// @TODO: Pull the dup parts out from these two if/else blocks. Make a list of Manifest objects and run through that
-		// doing the dup parts.
 	}
+	// else { // add https://github.com/clnperez/docker/commit/ec8e5dd274fb6eb5e6cf6df863e56626ffeb562f back }
 
 	// Set the schema version
 	manifestList.Versioned = manifestlist.SchemaVersion
@@ -278,6 +248,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 			return err
 		}
 		if opts.purge == true {
+			targetFilename, _ := mfToFilename(fullTargetRef.String(), "")
 			logrus.Debugf("deleting files at %s", targetFilename)
 			if err := os.RemoveAll(targetFilename); err != nil {
 				// Not a fatal error
@@ -288,6 +259,48 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		return nil
 	}
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
+}
+
+func constructTargetRefs(args []string, opts pushOpts) (reference.Named, reference.Named, reference.Named, error) {
+	var (
+		initialRef        string
+		targetRefNoDomain reference.Named
+		targetRefNoTag    reference.Named
+		fullTargetRef     reference.Named
+		err               error
+	)
+
+	if opts.file != "" {
+		yamlInput, err := getYamlInput(opts.file)
+		if err != nil {
+			return nil, nil, nil, errors.Wrap(err, "error retrieving manifests from YAML file")
+		}
+		initialRef = yamlInput.Image
+	} else {
+		initialRef = args[0]
+	}
+	fullTargetRef, err = reference.ParseNormalizedNamed(initialRef)
+	if err != nil {
+		return nil, nil, nil, errors.Wrapf(err, "error parsing name for manifest list (%s): %v")
+	}
+	if _, isDigested := fullTargetRef.(reference.Canonical); !isDigested {
+		fullTargetRef = reference.TagNameOnly(fullTargetRef)
+	}
+	tagIndex := strings.LastIndex(fullTargetRef.String(), ":")
+	logrus.Debugf("fullTargetRef. should be complete by now: %s", fullTargetRef.String())
+	if tagIndex < 0 {
+		return nil, nil, nil, fmt.Errorf("malformed reference")
+	}
+	tag := fullTargetRef.String()[tagIndex+1:]
+	targetRefNoTag, err = reference.WithName(reference.Path(fullTargetRef))
+	logrus.Debugf("targetRefNoTag should have no name and no tag: %s", targetRefNoTag.String())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	targetRefNoDomain, _ = reference.WithTag(targetRefNoTag, tag)
+	logrus.Debugf("targetRefNoDomain should have no domain but a tag? %s", targetRefNoDomain.String())
+
+	return fullTargetRef, targetRefNoDomain, targetRefNoTag, nil
 }
 
 func getYamlInput(yamlFile string) (YamlInput, error) {
