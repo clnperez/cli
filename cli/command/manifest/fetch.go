@@ -315,8 +315,6 @@ func continueOnError(err error) bool {
 		return true
 	case ImageConfigPullError:
 		return false
-	case error:
-		return !strings.Contains(err.Error(), strings.ToLower(syscall.ENOSPC.Error()))
 	}
 	// let's be nice and fallback if the error is a completely
 	// unexpected one.
