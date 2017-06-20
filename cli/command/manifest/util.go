@@ -118,17 +118,9 @@ func getFdGeneric(file string) (*os.File, error) {
 }
 
 func buildBaseFilename() (string, error) {
-	// Store the manifests in a user's home to prevent conflict. The HOME dir needs to be set,
-	// but can only be forcibly set on Linux at this time.
-	// See https://github.com/docker/docker/pull/29478 for more background on why this approach
-	// is being used.
-	if err := ensureHomeIfIAmStatic(); err != nil {
-		return "", err
-	}
-	userHome, err := homedir.GetStatic()
-	if err != nil {
-		return "", err
-	}
+	// Get will check for $HOME and if not set, lookup a user in
+	// a static-safe way (without calling os/user.Current())
+	userHome := homedir.Get()
 	return filepath.Join(userHome, ".docker", "manifests"), nil
 }
 
