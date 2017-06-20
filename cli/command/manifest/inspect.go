@@ -77,16 +77,11 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 		if err != nil {
 			return err
 		}
-		jsonBytes, err := json.Marshal(mfd)
+		jsonBytes, err := json.MarshalIndent(mfd, "", "\t")
 		if err != nil {
 			return err
 		}
-		prettyJSON.Reset()
-		err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
-		if err != nil {
-			return err
-		}
-		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
+		fmt.Fprintln(dockerCli.Out(), string(jsonBytes))
 		return nil
 	}
 
@@ -107,11 +102,7 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 	if err != nil {
 		return err
 	}
-	err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
+	fmt.Fprintln(dockerCli.Out(), string(jsonBytes))
 	if !opts.verbose {
 		return nil
 	}
@@ -122,14 +113,6 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 			return err
 		}
 		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
-		/*
-			prettyJSON.Reset()
-			err = json.Indent(&prettyJSON, jsonBytes, "", "    ")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
-		*/
 	}
 	return nil
 }
