@@ -17,17 +17,13 @@ import (
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/errcode"
+	"github.com/docker/distribution/registry/api/v2"
 	"github.com/docker/distribution/registry/client"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/distribution"
-	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/registry"
 )
-
-type manifestFetcher interface {
-	Fetch(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error)
-}
 
 func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, error) {
 
@@ -140,7 +136,7 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 		// Great, no reason to pull from the registry.
 		return foundImages, repoInfo, nil
 	}
-	// Maybe this wasn't a single manifest, in which case there will be no transaction ID
+	// For a manifest list request, the name should be used as the transactionID
 	foundImages, err = loadManifestList(normalName)
 	if err != nil {
 		return nil, nil, err
@@ -167,19 +163,8 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 	// Try to find the first endpoint that is *both* v2 and using TLS.
 	for _, endpoint := range endpoints {
 		// make sure I can reach the registry, same as docker pull does
-		v1endpoint, err := endpoint.ToV1Endpoint(dockerversion.DockerUserAgent(nil), nil)
-		if err != nil {
-			return nil, nil, err
-		}
-		if _, err := v1endpoint.Ping(); err != nil {
-			if strings.Contains(err.Error(), "timeout") {
-				return nil, nil, err
-			}
-			continue
-		}
-
-		if confirmedV2 && endpoint.Version == registry.APIVersion1 {
-			logrus.Debugf("Skipping v1 endpoint %s because v2 registry was detected", endpoint.URL)
+		if endpoint.Version == registry.APIVersion1 {
+			logrus.Debugf("Skipping v1 endpoint %s", endpoint.URL)
 			continue
 		}
 
@@ -255,21 +240,16 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 func newManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, registryService registry.Service) (manifestFetcher, error) {
 	switch endpoint.Version {
 	case registry.APIVersion2:
-		return &v2ManifestFetcher{
+		return manifestFetcher{
 			endpoint:   endpoint,
 			authConfig: authConfig,
 			service:    registryService,
 			repoInfo:   repoInfo,
 		}, nil
 	case registry.APIVersion1:
-		return &v1ManifestFetcher{
-			endpoint:   endpoint,
-			authConfig: authConfig,
-			service:    registryService,
-			repoInfo:   repoInfo,
-		}, nil
+		return manifestFetcher{}, fmt.Errorf("v1 registries are no longer supported")
 	}
-	return nil, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
+	return manifestFetcher{}, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
 }
 
 func makeImgManifestInspect(name string, img *image.Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
@@ -324,7 +304,13 @@ func continueOnError(err error) bool {
 	case distribution.ErrNoSupport:
 		return continueOnError(v.Err)
 	case errcode.Error:
-		return shouldV2Fallback(v)
+		e := err.(errcode.Error)
+		switch e.Code {
+		// @TODO: We should try remaning endpoints in these cases?
+		case errcode.ErrorCodeUnauthorized, v2.ErrorCodeManifestUnknown, v2.ErrorCodeNameUnknown:
+			return true
+		}
+		return false
 	case *client.UnexpectedHTTPResponseError:
 		return true
 	case ImageConfigPullError:
