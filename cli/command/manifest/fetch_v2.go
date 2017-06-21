@@ -136,7 +136,12 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	return imageList, nil
 }
 
-func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (img *image.Image, mfInfo manifestInfo, err error) {
+func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*image.Image, manifestInfo, error) {
+	var (
+		img    *image.Image
+		mfInfo manifestInfo
+	)
+
 	mfInfo.digest, err = schema2ManifestDigest(ref, mfst)
 	if err != nil {
 		return nil, mfInfo, err
@@ -187,9 +192,9 @@ func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 	return img, mfInfo, nil
 }
 
-func (mf *manifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst digest.Digest) (configJSON []byte, err error) {
+func (mf *manifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst digest.Digest) ([]byte, error) {
 	blobs := mf.repo.Blobs(ctx)
-	configJSON, err = blobs.Get(ctx, dgst)
+	configJSON, err := blobs.Get(ctx, dgst)
 	if err != nil {
 		return nil, err
 	}
