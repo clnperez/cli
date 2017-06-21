@@ -111,6 +111,7 @@ func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 	logrus.Debugf("annotated %s with options %v", mf.RefName, opts)
 	return nil
 }
+
 func appendIfUnique(list []string, str string) []string {
 	for _, s := range list {
 		if s == str {
