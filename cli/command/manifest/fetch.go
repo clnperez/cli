@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -89,9 +88,7 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 
 	var (
 		lastErr                    error
-		discardNoSupportErrors     bool
 		foundImages                []ImgManifestInspect
-		confirmedV2                bool
 		confirmedTLSRegistries     = make(map[string]struct{})
 		namedRef, transactionNamed reference.Named
 		err                        error
@@ -184,34 +181,9 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 		}
 
 		if foundImages, err = fetcher.Fetch(ctx, namedRef); err != nil {
-			// Was this fetch cancelled? If so, don't try to fall back.
-			fallback := false
-			select {
-			case <-ctx.Done():
-			default:
-				if fallbackErr, ok := err.(fallbackError); ok {
-					fallback = true
-					confirmedV2 = confirmedV2 || fallbackErr.confirmedV2
-					if fallbackErr.transportOK && endpoint.URL.Scheme == "https" {
-						confirmedTLSRegistries[endpoint.URL.Host] = struct{}{}
-					}
-					err = fallbackErr.err
-				}
-			}
-			if fallback {
-				if _, ok := err.(distribution.ErrNoSupport); !ok {
-					// Because we found an error that's not ErrNoSupport, discard all subsequent ErrNoSupport errors.
-					discardNoSupportErrors = true
-					// save the current error
-					lastErr = err
-				} else if !discardNoSupportErrors {
-					// Save the ErrNoSupport error, because it's either the first error or all encountered errors
-					// were also ErrNoSupport errors.
-					lastErr = err
-				}
-				continue
-			}
-			logrus.Errorf("not continuing with pull after error: %v", err)
+			// @TODO: What about the old fallbackError case? We need a continueOnError case.
+			// Can a manifest fetch be cancelled? I don't think so...
+			logrus.Errorf("not continuing with fetch after error: %v", err)
 			return nil, nil, err
 		}
 
