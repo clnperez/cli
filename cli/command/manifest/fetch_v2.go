@@ -51,8 +51,10 @@ func (mf *manifestFetcher) Fetch(ctx context.Context, ref reference.Named) ([]Im
 
 	images, err := mf.fetchWithRepository(ctx, ref)
 	if err != nil && continueOnError(err) {
+		// @TODO: This used to check continueOnError and return a fallbackError, so callers of Fetch would know to
+		// try the next endpoint...
 		logrus.Errorf("Error trying registry: %v", err)
-		return nil, fallbackError{err: err, confirmedV2: mf.confirmedV2, transportOK: true}
+		return nil, err
 	}
 	for _, img := range images {
 		img.MediaType = schema2.MediaTypeManifest
