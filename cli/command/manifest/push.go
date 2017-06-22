@@ -317,11 +317,10 @@ func getYamlInput(yamlFile string) (YamlInput, error) {
 	var yamlInput YamlInput
 	yamlBuf, err := ioutil.ReadFile(yamlFile)
 	if err != nil {
-		logrus.Fatalf(fmt.Sprintf("can't read YAML file %q: %v", yamlFile, err))
+		return YamlInput{}, errors.Wrapf(err, "can't read YAML file %s", yamlFile)
 	}
-	err = yaml.Unmarshal(yamlBuf, &yamlInput)
-	if err != nil {
-		logrus.Fatalf(fmt.Sprintf("can't unmarshal YAML file %q: %v", yamlFile, err))
+	if err = yaml.Unmarshal(yamlBuf, &yamlInput); err != nil {
+		return YamlInput{}, errors.Wrapf(err, "can't unmarshal YAML file %s", yamlFile)
 	}
 	return yamlInput, nil
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/docker/cli/cli"
@@ -58,9 +57,8 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 		return err
 	}
 
-	imgInspect, _, err = getImageData(dockerCli, named.String(), "", true)
-	if err != nil {
-		logrus.Fatal(err)
+	if imgInspect, _, err = getImageData(dockerCli, named.String(), "", true); err != nil {
+		return err
 	}
 	// output basic informative details about the image
 	if len(imgInspect) == 1 {
