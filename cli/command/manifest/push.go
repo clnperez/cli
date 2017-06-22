@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,8 +72,8 @@ type YamlManifestEntry struct {
 // we will store up a list of blobs we must ask the registry
 // to cross-mount into our target namespace
 type blobMount struct {
-	FromRepo string
-	Digest   string
+	FromRepo reference.Named
+	Digest   digest.Digest
 }
 
 // if we have mounted blobs referenced from manifests from
@@ -181,7 +180,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 			// requested blob mounts (cross-repository push) before pushing the manifest list
 			manifestRepoName := reference.Path(repoInfo.Name)
 			if targetRepoName != manifestRepoName {
-				bmr, mr := buildBlobMountRequestLists(mfstInspect, targetRepoName, manifestRepoName)
+				bmr, mr := buildBlobMountRequestLists(mfstInspect, targetRepo.Name, repoInfo.Name)
 				blobMountRequests = append(blobMountRequests, bmr...)
 				manifestRequests = append(manifestRequests, mr...)
 			}
@@ -228,7 +227,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	// before we push the manifest list, if we have any blob mount requests, we need
 	// to ask the registry to mount those blobs in our target so they are available
 	// as references
-	if err := mountBlobs(httpClient, urlBuilder, targetRef, blobMountRequests); err != nil {
+	if err := mountBlobs(ctx, httpClient, targetEndpoint.URL.String(), targetRef, blobMountRequests); err != nil {
 		return errors.Wrap(err, "couldn't mount blobs for cross-repository push")
 	}
 
@@ -364,7 +363,7 @@ func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect ImgManifest
 	return manifest, repoInfo, nil
 }
 
-func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, mfRepoName string) ([]blobMount, []manifestPush) {
+func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, mfRepoName reference.Named) ([]blobMount, []manifestPush) {
 
 	var (
 		blobMountRequests []blobMount
@@ -373,12 +372,13 @@ func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, 
 
 	logrus.Debugf("adding manifest references of %q to blob mount requests to %s", mfRepoName, targetRepoName)
 	for _, layer := range mfstInspect.References {
-		blobMountRequests = append(blobMountRequests, blobMount{FromRepo: mfRepoName, Digest: layer})
+		dgst, _ := digest.Parse(layer)
+		blobMountRequests = append(blobMountRequests, blobMount{FromRepo: targetRepoName, Digest: dgst})
 	}
 	// also must add the manifest to be pushed in the target namespace
 	logrus.Debugf("adding manifest %q -> to be pushed to %q as a manifest reference", mfRepoName, targetRepoName)
 	manifestRequests = append(manifestRequests, manifestPush{
-		Name:      mfRepoName,
+		Name:      mfRepoName.String(),
 		Digest:    mfstInspect.Digest.String(),
 		JSONBytes: mfstInspect.CanonicalJSON,
 		MediaType: mfstInspect.MediaType,
@@ -584,29 +584,27 @@ func pushReferences(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref refe
 	return nil
 }
 
-func mountBlobs(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref reference.Named, blobsRequested []blobMount) error {
-
+func mountBlobs(ctx context.Context, httpClient *http.Client, targetURL string, ref reference.Named, blobsRequested []blobMount) error {
 	for _, blob := range blobsRequested {
-		// create URL request
-		url, err := urlBuilder.BuildBlobUploadURL(ref, url.Values{"from": {blob.FromRepo}, "mount": {blob.Digest}})
+		repo, err := client.NewRepository(ctx, ref, targetURL, httpClient.Transport)
 		if err != nil {
-			return errors.Wrap(err, "failed to create blob mount URL")
+			return err
 		}
-		mountRequest, err := http.NewRequest("POST", url, nil)
+		bs := repo.Blobs(ctx)
+		fromCanonical, err := reference.WithDigest(blob.FromRepo, blob.Digest)
 		if err != nil {
-			return errors.Wrap(err, "HTTP POST request creation for blob mount failed")
+			return err
 		}
-		mountRequest.Header.Set("Content-Length", "0")
-		resp, err := httpClient.Do(mountRequest)
+		lu, err := bs.Create(ctx, client.WithMountFrom(fromCanonical))
 		if err != nil {
-			return errors.Wrap(err, "v2 registry POST of blob mount failed")
+			if _, ok := err.(distribution.ErrBlobMounted); ok {
+				// mount successful
+			}
+		} else {
+			// registry treated this as a normal upload
+			lu.Cancel(ctx)
 		}
-
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("blob mount failed to url %s: HTTP status %d", url, resp.StatusCode)
-		}
-		logrus.Debugf("mount of blob %s succeeded, location: %q", blob.Digest, resp.Header.Get("Location"))
+		logrus.Debugf("mount of blob %s succeeded", blob.Digest.String())
 	}
 	return nil
 }
