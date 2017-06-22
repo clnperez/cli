@@ -1,9 +1,19 @@
 package manifest
 
 import (
+	"fmt"
+
 	containerTypes "github.com/docker/docker/api/types/container"
 	"github.com/opencontainers/go-digest"
 )
+
+type recoverableError struct {
+	original error
+}
+
+func (e recoverableError) Error() string {
+	return fmt.Sprintf("non-fatal fetch error: %e", e.original.Error())
+}
 
 // ImgManifestInspect contains info to output for a manifest object.
 type ImgManifestInspect struct {

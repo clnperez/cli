@@ -19,8 +19,11 @@ import (
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
 
+	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/v2"
+	"github.com/docker/distribution/registry/client"
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/transport"
 	digest "github.com/opencontainers/go-digest"
@@ -28,7 +31,7 @@ import (
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
-	"github.com/docker/distribution/reference"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/registry"
@@ -216,10 +219,11 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
-	httpClient, err := getHTTPClient(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
+	tr, err := getDistClientTransport(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
 	if err != nil {
 		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
+	httpClient := &http.Client{Transport: tr}
 
 	// before we push the manifest list, if we have any blob mount requests, we need
 	// to ask the registry to mount those blobs in our target so they are available
@@ -384,9 +388,31 @@ func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, 
 	return blobMountRequests, manifestRequests
 }
 
-func getHTTPClient(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (*http.Client, error) {
+// @TODO: Move this (or getDistClientTransport?) into package
+func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, bool, error) {
+	repoName := repoInfo.Name.Name()
+	// If endpoint does not support CanonicalName, use the RemoteName instead
+	if endpoint.TrimHostname {
+		repoName = reference.Path(repoInfo.Name)
+	}
+	repoNameRef, err := reference.WithName(repoName)
+	if err != nil {
+		return nil, false, err
+	}
+
+	tr, err := getDistClientTransport(ctx, dockerCli, repoInfo, endpoint, repoName)
+	if err != nil {
+		return nil, false, err
+	}
+	repo, err := client.NewRepository(ctx, repoNameRef, endpoint.URL.String(), tr)
+	if err != nil {
+		return nil, false, err
+	}
+	return repo, true, nil
+}
+
+func getDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
 	// get the http transport, this will be used in a client to upload manifest
-	// TODO - add separate function get client
 	base := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
@@ -402,9 +428,12 @@ func getHTTPClient(ctx context.Context, dockerCli command.Cli, repoInfo *registr
 	authConfig := command.ResolveAuthConfig(ctx, dockerCli, repoInfo.Index)
 	modifiers := registry.DockerHeaders(dockerversion.DockerUserAgent(nil), http.Header{})
 	authTransport := transport.NewTransport(base, modifiers...)
-	challengeManager, _, err := registry.PingV2Registry(endpoint.URL, authTransport)
+	challengeManager, confirmedV2, err := registry.PingV2Registry(endpoint.URL, authTransport)
 	if err != nil {
-		return nil, errors.Wrap(err, "ping of V2 registry failed")
+		return nil, errors.Wrap(err, "error pinging v2 registry")
+	}
+	if !confirmedV2 {
+		return nil, fmt.Errorf("unsupported registry version")
 	}
 	if authConfig.RegistryToken != "" {
 		passThruTokenHandler := &existingTokenHandler{token: authConfig.RegistryToken}
@@ -415,15 +444,7 @@ func getHTTPClient(ctx context.Context, dockerCli command.Cli, repoInfo *registr
 		basicHandler := auth.NewBasicHandler(creds)
 		modifiers = append(modifiers, auth.NewAuthorizer(challengeManager, tokenHandler, basicHandler))
 	}
-	tr := transport.NewTransport(base, modifiers...)
-
-	httpClient := &http.Client{
-		Transport: tr,
-		// @TODO: Use the default (leave CheckRedirect nil), or write a generic one
-		// and put it somewhere? (There's one in docker/distribution/registry/client/repository.go)
-		// CheckRedirect: checkHTTPRedirect,
-	}
-	return httpClient, nil
+	return transport.NewTransport(base, modifiers...), nil
 }
 
 func createManifestURLFromRef(targetRef reference.Named, urlBuilder *v2.URLBuilder) (string, error) {
@@ -499,7 +520,7 @@ func loadLocalInsecureRegistries() ([]string, error) {
 	if jsonData != nil {
 		cf := configfile.ConfigFile{}
 		if err := json.Unmarshal(jsonData, &cf); err != nil {
-			logrus.Debugf("manifest create: Unable to unmarshal insecure registries from $HOME/.docker/config.json: %s", err)
+			logrus.Debugf("manifest create: unable to unmarshal insecure registries from $HOME/.docker/config.json: %s", err)
 			return []string{}, nil
 		}
 		if cf.InsecureRegistries == nil {

@@ -9,12 +9,12 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
-	dockerdistribution "github.com/docker/docker/distribution"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
@@ -39,20 +39,21 @@ type manifestInfo struct {
 	jsonBytes   []byte
 }
 
-func (mf *manifestFetcher) Fetch(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error) {
+func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
 	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
 	var err error
 
-	mf.repo, mf.confirmedV2, err = dockerdistribution.NewV2Repository(ctx, mf.repoInfo, mf.endpoint, nil, &mf.authConfig, "pull")
+	mf.repo, mf.confirmedV2, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint, nil, &mf.authConfig, "pull")
 	if err != nil {
 		logrus.Debugf("Error getting v2 registry: %v", err)
 		return nil, err
 	}
 
 	images, err := mf.fetchWithRepository(ctx, ref)
-	if err != nil && continueOnError(err) {
-		// @TODO: This used to check continueOnError and return a fallbackError, so callers of Fetch would know to
-		// try the next endpoint...
+	if err != nil {
+		if continueOnError(err) {
+			return nil, recoverableError{original: err}
+		}
 		logrus.Errorf("Error trying registry: %v", err)
 		return nil, err
 	}
@@ -138,18 +139,18 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 
 func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*image.Image, manifestInfo, error) {
 	var (
-		img    *image.Image
-		mfInfo manifestInfo
+		img *image.Image
 	)
 
-	mfInfo.digest, err = schema2ManifestDigest(ref, mfst)
+	mfDigest, err := schema2ManifestDigest(ref, mfst)
 	if err != nil {
-		return nil, mfInfo, err
+		return nil, manifestInfo{}, err
 	}
-	target := mfst.Target()
+	mfInfo := manifestInfo{
+		digest: mfDigest}
 
 	// Pull the image config
-	configJSON, err := mf.pullSchema2ImageConfig(ctx, target.Digest)
+	configJSON, err := mf.pullSchema2ImageConfig(ctx, mfst.Target().Digest)
 	if err != nil {
 		return nil, mfInfo, err
 	}

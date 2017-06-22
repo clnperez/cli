@@ -89,7 +89,8 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 	var (
 		lastErr                    error
 		foundImages                []ImgManifestInspect
-		confirmedTLSRegistries     = make(map[string]struct{})
+		discardNoSupportErrors     bool
+		confirmedTLSRegistries     = make(map[string]bool)
 		namedRef, transactionNamed reference.Named
 		err                        error
 		normalName                 string
@@ -180,9 +181,24 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 			continue
 		}
 
-		if foundImages, err = fetcher.Fetch(ctx, namedRef); err != nil {
-			// @TODO: What about the old fallbackError case? We need a continueOnError case.
+		if foundImages, err = fetcher.Fetch(ctx, dockerCli, namedRef); err != nil {
 			// Can a manifest fetch be cancelled? I don't think so...
+			if _, ok := err.(recoverableError); ok {
+				if endpoint.URL.Scheme == "https" {
+					confirmedTLSRegistries[endpoint.URL.Host] = true
+				}
+				if _, ok := err.(distribution.ErrNoSupport); !ok {
+					// Because we found an error that's not ErrNoSupport, discard all subsequent ErrNoSupport errors.
+					discardNoSupportErrors = true
+					// save the current error
+					lastErr = err
+				} else if !discardNoSupportErrors {
+					// Save the ErrNoSupport error, because it's either the first error or all encountered errors
+					// were also ErrNoSupport errors.
+					lastErr = err
+				}
+				continue
+			}
 			logrus.Errorf("not continuing with fetch after error: %v", err)
 			return nil, nil, err
 		}
