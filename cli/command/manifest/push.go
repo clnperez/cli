@@ -506,10 +506,10 @@ func loadLocalInsecureRegistries() ([]string, error) {
 		return []string{}, fmt.Errorf("manifest create: lookup local insecure registries: Unable to retreive $HOME")
 	}
 
-	jsonData, err := ioutil.ReadFile(fmt.Sprintf("%s/.docker/config.json", userHome))
+	jsonData, err := ioutil.ReadFile(filepath.Join(userHome, ".docker/config.json"))
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return []string{}, errors.Wrap(err, "manifest create: Unable to read $HOME/.docker/config.json")
+			return []string{}, errors.Wrap(err, "manifest create:")
 		}
 		// If the file just doesn't exist, no insecure registries were specified.
 		logrus.Debug("manifest: no insecure registries were specified via $HOME/.docker/config.json")
@@ -579,10 +579,7 @@ func pushReferences(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref refe
 		if err != nil {
 			return errors.Wrap(err, "couldn't parse pushed manifest digest response")
 		}
-		if string(dgstResult) != manifest.Digest {
-			return fmt.Errorf("pushed referenced manifest received a different digest: expected %s, got %s", manifest.Digest, string(dgst))
-		}
-		logrus.Debugf("referenced manifest %q pushed; digest matches: %s", manifest.Name, string(dgst))
+		logrus.Infof("pushed manifest (%s) digest:  %s", manifest.Name, string(dgstResult))
 	}
 	return nil
 }
