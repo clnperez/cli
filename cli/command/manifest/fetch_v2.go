@@ -38,6 +38,12 @@ type manifestInfo struct {
 	jsonBytes   []byte
 }
 
+type manifestListInspect struct {
+	imageInfos []*Image
+	mfInfos    []manifestInfo
+	mediaTypes []string
+}
+
 func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
 	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
 	var err error
@@ -121,10 +127,13 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 			return nil, err
 		}
 	case *manifestlist.DeserializedManifestList:
-		images, mfInfos, mediaType, err = mf.pullManifestList(ctx, ref, *v)
+		listInspect, err := mf.pullManifestList(ctx, ref, *v)
 		if err != nil {
 			return nil, err
 		}
+		images = listInspect.imageInfos
+		mfInfos = listInspect.mfInfos
+		mediaType = listInspect.mediaTypes
 	default:
 		return nil, fmt.Errorf("unsupported manifest format: %v", v)
 	}
@@ -254,7 +263,7 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 
 // pullManifestList handles "manifest lists" which point to various
 // platform-specifc manifests.
-func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) ([]*Image, []manifestInfo, []string, error) {
+func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) (*manifestListInspect, error) {
 	var (
 		imageList = []*Image{}
 		mfInfos   = []manifestInfo{}
@@ -264,30 +273,30 @@ func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 	)
 	manifestListDigest, err := schema2ManifestDigest(ref, mfstList)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	logrus.Debugf("Pulling manifest list entries for ML digest %v", manifestListDigest)
 
 	for _, manifestDescriptor := range mfstList.Manifests {
 		manSvc, err := mf.repo.Manifests(ctx)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 
 		thisDigest := manifestDescriptor.Digest
 		thisPlatform := manifestDescriptor.Platform
 		manifest, err := manSvc.Get(ctx, thisDigest)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 
 		manifestRef, err := reference.WithDigest(ref, thisDigest)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 
 		if v, ok = manifest.(*schema2.DeserializedManifest); !ok {
-			return nil, nil, nil, fmt.Errorf("unsupported manifest format: %s v")
+			return nil, fmt.Errorf("unsupported manifest format: %s v")
 		}
 		img, mfInfo, err := mf.pullSchema2(ctx, manifestRef, *v)
 		imageList = append(imageList, img)
@@ -295,9 +304,9 @@ func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 		mfInfos = append(mfInfos, mfInfo)
 		mediaType = append(mediaType, schema2.MediaTypeManifest)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, err
 		}
 	}
 
-	return imageList, mfInfos, mediaType, err
+	return &manifestListInspect{imageInfos: imageList, mfInfos: mfInfos, mediaTypes: mediaType}, err
 }
