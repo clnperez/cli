@@ -6,7 +6,6 @@ package manifest
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -108,7 +107,7 @@ func getFdGeneric(file string) (*os.File, error) {
 		return nil, err
 	}
 	if fileinfo.IsDir() {
-		return nil, fmt.Errorf("cannot open directory")
+		return nil, dirOpenError{}
 	}
 	fd, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
