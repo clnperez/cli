@@ -7,12 +7,21 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+// recoverableError
 type recoverableError struct {
 	original error
 }
 
 func (e recoverableError) Error() string {
 	return fmt.Sprintf("non-fatal fetch error: %e", e.original.Error())
+}
+
+// dirOpenError
+type dirOpenError struct {
+}
+
+func (e dirOpenError) Error() string {
+	return "cannot perform open on a directory"
 }
 
 // ImgManifestInspect contains info to output for a manifest object.
