@@ -225,17 +225,6 @@ func unmarshalConfig(configJSON []byte) (image.Image, error) {
 	return unmarshalledConfig, nil
 }
 
-// ImageConfigPullError is an error pulling the image config blob
-// (only applies to schema2).
-type ImageConfigPullError struct {
-	Err error
-}
-
-// Error returns the error string for ImageConfigPullError.
-func (e ImageConfigPullError) Error() string {
-	return "error pulling image configuration: " + e.Err.Error()
-}
-
 // schema2ManifestDigest computes the manifest digest, and, if pulling by
 // digest, ensures that it matches the requested digest.
 func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (digest.Digest, error) {
