@@ -63,7 +63,7 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 	// Now create the local manifest list transaction by looking up the manifest schemas
 	// for the constituent images:
 	manifests := args[1:]
-	logrus.Info("retrieving digests of images...")
+	logrus.Debugf("retrieving digests of images...")
 	for _, manifestRef := range manifests {
 
 		mfstData, _, err := getImageData(dockerCli, manifestRef, targetRef.String(), false)
@@ -77,5 +77,6 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 		}
 
 	}
+	logrus.Infof("successfully started manifest list transaction for %s", targetRef.String())
 	return nil
 }
