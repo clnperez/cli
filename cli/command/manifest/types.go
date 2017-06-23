@@ -24,6 +24,17 @@ func (e dirOpenError) Error() string {
 	return "cannot perform open on a directory"
 }
 
+// ImageConfigPullError is an error pulling the image config blob
+// (only applies to schema2).
+type ImageConfigPullError struct {
+	Err error
+}
+
+// Error returns the error string for ImageConfigPullError.
+func (e ImageConfigPullError) Error() string {
+	return "error pulling image configuration: " + e.Err.Error()
+}
+
 // ImgManifestInspect contains info to output for a manifest object.
 type ImgManifestInspect struct {
 	RefName         string                 `json:"ref"`
