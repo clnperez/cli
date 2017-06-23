@@ -59,7 +59,6 @@ func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref
 		if continueOnError(err) {
 			return nil, recoverableError{original: err}
 		}
-		logrus.Errorf("Error trying registry: %v", err)
 		return nil, err
 	}
 	for _, img := range images {
@@ -218,7 +217,6 @@ func (mf *manifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst dige
 	}
 	if !verifier.Verified() {
 		err := fmt.Errorf("image config verification failed for digest %s", dgst)
-		logrus.Error(err)
 		return nil, err
 	}
 
@@ -252,7 +250,6 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 		}
 		if !verifier.Verified() {
 			err := fmt.Errorf("manifest verification failed for digest %s", digested.Digest())
-			logrus.Error(err)
 			return "", err
 		}
 		return digested.Digest(), nil

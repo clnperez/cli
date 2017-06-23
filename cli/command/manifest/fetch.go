@@ -77,7 +77,6 @@ func storeManifest(imgInspect ImgManifestInspect, name, transaction string) erro
 	os.MkdirAll(filepath.Join(manifestBase, transaction), 0755)
 	logrus.Debugf("Storing  %s", name)
 	if err = updateMfFile(imgInspect, name, transaction); err != nil {
-		fmt.Printf("Error writing local manifest copy: %s", err)
 		return err
 	}
 
@@ -200,7 +199,7 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 				}
 				continue
 			}
-			logrus.Errorf("not continuing with fetch after error: %v", err)
+			logrus.Debugf("not continuing with fetch after unrecoverable error: %v", err)
 			return nil, nil, err
 		}
 
@@ -212,7 +211,7 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 		// image name *and* a transaction ID. IOW, foundImages will be only one image.
 		if !fetchOnly {
 			if err := storeManifest(foundImages[0], makeFilesafeName(normalName), transactionID); err != nil {
-				logrus.Errorf("error storing manifests: %s", err)
+				logrus.Debugf("error storing manifests: %s", err)
 			}
 		}
 		return foundImages, repoInfo, nil

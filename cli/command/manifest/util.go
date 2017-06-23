@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/pkg/homedir"
 )
 
@@ -72,7 +71,6 @@ func getListFilenames(transaction string) ([]string, error) {
 	fd, err := os.Open(transactionDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			logrus.Debugf(err.Error())
 			return nil, nil
 		}
 		return nil, err
@@ -101,7 +99,6 @@ func getManifestFd(manifest, transaction string) (*os.File, error) {
 func getFdGeneric(file string) (*os.File, error) {
 	fileinfo, err := os.Stat(file)
 	if err != nil && os.IsNotExist(err) {
-		logrus.Debugf("manifest file %s not found.", file)
 		return nil, nil
 	} else if err != nil {
 		return nil, err
