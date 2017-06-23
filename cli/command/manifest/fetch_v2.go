@@ -15,7 +15,6 @@ import (
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/image"
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
 )
@@ -106,7 +105,7 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	}
 
 	var (
-		images    []*image.Image
+		images    []*Image
 		mfInfos   []manifestInfo
 		mediaType []string
 	)
@@ -137,9 +136,9 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	return imageList, nil
 }
 
-func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*image.Image, manifestInfo, error) {
+func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
 	var (
-		img *image.Image
+		img *Image
 	)
 
 	mfDigest, err := schema2ManifestDigest(ref, mfst)
@@ -172,7 +171,7 @@ func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 		mfInfo.layers = append(mfInfo.layers, layer.Digest.String())
 	}
 
-	img, err = image.NewFromJSON(configJSON)
+	img, err = NewImageFromJSON(configJSON)
 	if err != nil {
 		return nil, mfInfo, err
 	}
@@ -217,10 +216,10 @@ func (mf *manifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst dige
 	return configJSON, nil
 }
 
-func unmarshalConfig(configJSON []byte) (image.Image, error) {
-	var unmarshalledConfig image.Image
+func unmarshalConfig(configJSON []byte) (Image, error) {
+	var unmarshalledConfig Image
 	if err := json.Unmarshal(configJSON, &unmarshalledConfig); err != nil {
-		return image.Image{}, err
+		return Image{}, err
 	}
 	return unmarshalledConfig, nil
 }
@@ -255,9 +254,9 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 
 // pullManifestList handles "manifest lists" which point to various
 // platform-specifc manifests.
-func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) ([]*image.Image, []manifestInfo, []string, error) {
+func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) ([]*Image, []manifestInfo, []string, error) {
 	var (
-		imageList = []*image.Image{}
+		imageList = []*Image{}
 		mfInfos   = []manifestInfo{}
 		mediaType = []string{}
 		v         *schema2.DeserializedManifest
