@@ -125,10 +125,13 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	if (numArgs == 0) && (opts.file == "") {
 		return fmt.Errorf("please push using a yaml file or a list created using 'manifest create.'")
 	}
+
 	fullTargetRef, targetRef, bareRef, err = constructTargetRefs(args, opts)
 	if err != nil {
 		return err
 	}
+	logrus.Infof("beginning push of manifests into %s", fullTargetRef.String())
+
 	if opts.file == "" {
 		manifests, err = getListFilenames(fullTargetRef.String())
 		if err != nil {
@@ -157,7 +160,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 
 	// Now create the manifest list payload by looking up the manifest schemas
 	// for the constituent images:
-	logrus.Info("retrieving digests of images...")
+	logrus.Debugf("retrieving digests of images...")
 	if opts.file == "" {
 		// manifests is a list of file paths
 		for _, manifestFile := range manifests {
@@ -192,7 +195,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	manifestList.Versioned = manifestlist.SchemaVersion
 
 	urlBuilder, err := v2.NewURLBuilderFromString(targetEndpoint.URL.String(), false)
-	logrus.Infof("manifest: put: target endpoint url: %s", targetEndpoint.URL.String())
+	logrus.Debugf("manifest: put: target endpoint url: %s", targetEndpoint.URL.String())
 	if err != nil {
 		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetEndpoint.URL.String())
 	}
@@ -460,12 +463,10 @@ func setupRepo(repoInfo *registry.RepositoryInfo) (registry.APIEndpoint, string,
 	if err != nil {
 		return endpoint, "", err
 	}
-	logrus.Debugf("manifest: create: endpoint: %v", endpoint)
 	repoName := repoInfo.Name.Name()
 	// If endpoint does not support CanonicalName, use the RemoteName instead
 	if endpoint.TrimHostname {
 		repoName = reference.Path(repoInfo.Name)
-		logrus.Debugf("repoName: %v", repoName)
 	}
 	return endpoint, repoName, nil
 }
@@ -484,7 +485,6 @@ func selectPushEndpoint(repoInfo *registry.RepositoryInfo) (registry.APIEndpoint
 	if err != nil {
 		return registry.APIEndpoint{}, err
 	}
-	logrus.Debugf("manifest: potential push endpoints: %v\n", endpoints)
 	// Default to the highest priority endpoint to return
 	endpoint := endpoints[0]
 	if !repoInfo.Index.Secure {
@@ -545,12 +545,10 @@ func loadLocalInsecureRegistries() ([]string, error) {
 func pushReferences(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref reference.Named, manifests []manifestPush) error {
 	for _, manifest := range manifests {
 		dgst, err := digest.Parse(manifest.Digest)
-		logrus.Debugf("pushing ref digest %s", dgst)
 		if err != nil {
 			return errors.Wrapf(err, "error parsing manifest digest (%s) for referenced manifest %q: %v", manifest.Digest, manifest.Name)
 		}
 		targetRef, err := reference.WithDigest(ref, dgst)
-		logrus.Debugf("pushing ref %v", targetRef)
 		if err != nil {
 			return errors.Wrapf(err, "error creating manifest digest target for referenced manifest %q: %v", manifest.Name)
 		}
@@ -558,7 +556,6 @@ func pushReferences(httpClient *http.Client, urlBuilder *v2.URLBuilder, ref refe
 		if err != nil {
 			return errors.Wrapf(err, "error setting up manifest push URL for manifest references for %q: %v", manifest.Name)
 		}
-		logrus.Debugf("manifest reference push URL: %s", pushURL)
 
 		pushRequest, err := http.NewRequest("PUT", pushURL, bytes.NewReader(manifest.JSONBytes))
 		if err != nil {
