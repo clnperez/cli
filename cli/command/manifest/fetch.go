@@ -5,29 +5,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/cli/cli/manifest/fetcher"
 	"github.com/docker/distribution/reference"
-	"github.com/docker/distribution/registry/api/errcode"
-	"github.com/docker/distribution/registry/api/v2"
-	"github.com/docker/distribution/registry/client"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/distribution"
 	"github.com/docker/docker/registry"
 )
 
-func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, error) {
+func loadManifest(manifest string, transaction string) ([]fetcher.ImgManifestInspect, error) {
 
 	// Load either a single manifest (if transaction is "", that's fine), or a
 	// manifest list
-	var foundImages []ImgManifestInspect
+	var foundImages []fetcher.ImgManifestInspect
 	fd, err := getManifestFd(manifest, transaction)
 	if err != nil {
 		if _, dirOpen := err.(dirOpenError); !dirOpen {
@@ -40,7 +33,7 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 		if err != nil {
 			return nil, err
 		}
-		mfInspect, err := unmarshalIntoManifestInspect(manifest, transaction)
+		mfInspect, err := localManifestToManifestInspect(manifest, transaction)
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +42,7 @@ func loadManifest(manifest string, transaction string) ([]ImgManifestInspect, er
 	return foundImages, nil
 }
 
-func loadManifestList(transaction string) (foundImages []ImgManifestInspect, _ error) {
+func loadManifestList(transaction string) (foundImages []fetcher.ImgManifestInspect, _ error) {
 	manifests, err := getListFilenames(transaction)
 	if err != nil {
 		return nil, err
@@ -57,7 +50,7 @@ func loadManifestList(transaction string) (foundImages []ImgManifestInspect, _ e
 	for _, manifestFile := range manifests {
 		fileParts := strings.Split(manifestFile, string(filepath.Separator))
 		numParts := len(fileParts)
-		mfInspect, err := unmarshalIntoManifestInspect(fileParts[numParts-1], transaction)
+		mfInspect, err := localManifestToManifestInspect(fileParts[numParts-1], transaction)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +59,7 @@ func loadManifestList(transaction string) (foundImages []ImgManifestInspect, _ e
 	return foundImages, nil
 }
 
-func storeManifest(imgInspect ImgManifestInspect, name, transaction string) error {
+func storeManifest(imgInspect fetcher.ImgManifestInspect, name, transaction string) error {
 	// Store this image manifest so that it can be annotated.
 	// Store the manifests in a user's home to prevent conflict.
 	manifestBase, err := buildBaseFilename()
@@ -84,12 +77,11 @@ func storeManifest(imgInspect ImgManifestInspect, name, transaction string) erro
 }
 
 // nolint: gocyclo
-func getImageData(dockerCli command.Cli, name string, transactionID string, fetchOnly bool) ([]ImgManifestInspect, *registry.RepositoryInfo, error) {
+func getImageData(dockerCli command.Cli, name string, transactionID string, fetchOnly bool) ([]fetcher.ImgManifestInspect, *registry.RepositoryInfo, error) {
 
 	var (
 		lastErr                    error
-		foundImages                []ImgManifestInspect
-		discardNoSupportErrors     bool
+		foundImages                []fetcher.ImgManifestInspect
 		confirmedTLSRegistries     = make(map[string]bool)
 		namedRef, transactionNamed reference.Named
 		err                        error
@@ -175,27 +167,17 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 
 		logrus.Debugf("Trying to fetch image manifest of %s repository from %s %s", normalName, endpoint.URL, endpoint.Version)
 
-		fetcher, err := newManifestFetcher(endpoint, repoInfo, authConfig, registryService)
+		mfFetcher, err := fetcher.NewManifestFetcher(endpoint, repoInfo, authConfig, registryService)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
-		if foundImages, err = fetcher.Fetch(ctx, dockerCli, namedRef); err != nil {
+		if foundImages, err = mfFetcher.Fetch(ctx, dockerCli, namedRef); err != nil {
 			// Can a manifest fetch be cancelled? I don't think so...
-			if _, ok := err.(recoverableError); ok {
+			if _, ok := err.(fetcher.RecoverableError); ok {
 				if endpoint.URL.Scheme == "https" {
 					confirmedTLSRegistries[endpoint.URL.Host] = true
-				}
-				if _, ok := err.(distribution.ErrNoSupport); !ok {
-					// Because we found an error that's not ErrNoSupport, discard all subsequent ErrNoSupport errors.
-					discardNoSupportErrors = true
-					// save the current error
-					lastErr = err
-				} else if !discardNoSupportErrors {
-					// Save the ErrNoSupport error, because it's either the first error or all encountered errors
-					// were also ErrNoSupport errors.
-					lastErr = err
 				}
 				continue
 			}
@@ -223,90 +205,4 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 
 	return nil, nil, lastErr
 
-}
-
-func newManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, registryService registry.Service) (manifestFetcher, error) {
-	switch endpoint.Version {
-	case registry.APIVersion2:
-		return manifestFetcher{
-			endpoint:   endpoint,
-			authConfig: authConfig,
-			service:    registryService,
-			repoInfo:   repoInfo,
-		}, nil
-	case registry.APIVersion1:
-		return manifestFetcher{}, fmt.Errorf("v1 registries are no longer supported")
-	}
-	return manifestFetcher{}, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
-}
-
-func makeImgManifestInspect(name string, img *Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
-	var digest digest.Digest
-	if err := mfInfo.digest.Validate(); err == nil {
-		digest = mfInfo.digest
-	}
-
-	if mediaType == manifestlist.MediaTypeManifestList {
-		return &ImgManifestInspect{
-			MediaType: mediaType,
-			Digest:    digest,
-		}
-	}
-
-	var digests []string
-	for _, blobDigest := range mfInfo.blobDigests {
-		digests = append(digests, blobDigest.String())
-	}
-	return &ImgManifestInspect{
-		RefName:         name,
-		Size:            mfInfo.length,
-		MediaType:       mediaType,
-		Tag:             tag,
-		Digest:          digest,
-		RepoTags:        tagList,
-		Comment:         img.Comment,
-		Created:         img.Created.Format(time.RFC3339Nano),
-		ContainerConfig: &img.ContainerConfig,
-		DockerVersion:   img.DockerVersion,
-		Author:          img.Author,
-		Config:          img.Config,
-		Architecture:    mfInfo.platform.Architecture,
-		OS:              mfInfo.platform.OS,
-		OSVersion:       mfInfo.platform.OSVersion,
-		OSFeatures:      mfInfo.platform.OSFeatures,
-		Variant:         mfInfo.platform.Variant,
-		Features:        mfInfo.platform.Features,
-		References:      digests,
-		LayerDigests:    mfInfo.layers,
-		CanonicalJSON:   mfInfo.jsonBytes,
-	}
-}
-
-func continueOnError(err error) bool {
-	switch v := err.(type) {
-	case errcode.Errors:
-		if len(v) == 0 {
-			return true
-		}
-		return continueOnError(v[0])
-	case distribution.ErrNoSupport:
-		return continueOnError(v.Err)
-	case errcode.Error:
-		e := err.(errcode.Error)
-		switch e.Code {
-		// @TODO: We should try remaning endpoints in these cases?
-		case errcode.ErrorCodeUnauthorized, v2.ErrorCodeManifestUnknown, v2.ErrorCodeNameUnknown:
-			return true
-		}
-		return false
-	case *client.UnexpectedHTTPResponseError:
-		return true
-	case ImageConfigPullError:
-		return false
-	}
-	// let's be nice and fallback if the error is a completely
-	// unexpected one.
-	// If new errors have to be handled in some way, please
-	// add them to the switch above.
-	return true
 }

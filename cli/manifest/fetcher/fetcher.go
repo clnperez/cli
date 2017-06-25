@@ -1,32 +1,41 @@
-package manifest
+package fetcher
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"runtime"
+	"time"
 
 	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
+	"github.com/docker/distribution/registry/api/errcode"
+	"github.com/docker/distribution/registry/api/v2"
+	"github.com/docker/distribution/registry/client"
+	"github.com/docker/distribution/registry/client/auth"
+	"github.com/docker/distribution/registry/client/transport"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
 )
 
-type manifestFetcher struct {
+type ManifestFetcher struct {
 	endpoint    registry.APIEndpoint
 	repoInfo    *registry.RepositoryInfo
 	repo        distribution.Repository
 	confirmedV2 bool
 	authConfig  types.AuthConfig
-	// Leaving this as a pointer to an interface won't compile for me
-	service registry.Service
+	service     registry.Service
 }
 
 type manifestInfo struct {
@@ -44,7 +53,21 @@ type manifestListInspect struct {
 	mediaTypes []string
 }
 
-func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
+func NewManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, registryService registry.Service) (ManifestFetcher, error) {
+	switch endpoint.Version {
+	case registry.APIVersion2:
+		return ManifestFetcher{
+			endpoint: endpoint, authConfig: authConfig,
+			service:  registryService,
+			repoInfo: repoInfo,
+		}, nil
+	case registry.APIVersion1:
+		return ManifestFetcher{}, fmt.Errorf("v1 registries are no longer supported")
+	}
+	return ManifestFetcher{}, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
+}
+
+func (mf *ManifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
 	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
 	var err error
 
@@ -57,7 +80,7 @@ func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref
 	images, err := mf.fetchWithRepository(ctx, ref)
 	if err != nil {
 		if continueOnError(err) {
-			return nil, recoverableError{original: err}
+			return nil, RecoverableError{original: err}
 		}
 		return nil, err
 	}
@@ -67,7 +90,7 @@ func (mf *manifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref
 	return images, err
 }
 
-func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error) {
+func (mf *ManifestFetcher) fetchWithRepository(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error) {
 	var (
 		manifest    distribution.Manifest
 		tagOrDigest string // Used for logging/progress only
@@ -144,7 +167,7 @@ func (mf *manifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	return imageList, nil
 }
 
-func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
+func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
 	var (
 		img *Image
 	)
@@ -200,7 +223,7 @@ func (mf *manifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 	return img, mfInfo, nil
 }
 
-func (mf *manifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+func (mf *ManifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst digest.Digest) ([]byte, error) {
 	blobs := mf.repo.Blobs(ctx)
 	configJSON, err := blobs.Get(ctx, dgst)
 	if err != nil {
@@ -260,7 +283,7 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 
 // pullManifestList handles "manifest lists" which point to various
 // platform-specifc manifests.
-func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) (*manifestListInspect, error) {
+func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) (*manifestListInspect, error) {
 	var (
 		imageList = []*Image{}
 		mfInfos   = []manifestInfo{}
@@ -306,4 +329,131 @@ func (mf *manifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 	}
 
 	return &manifestListInspect{imageInfos: imageList, mfInfos: mfInfos, mediaTypes: mediaType}, err
+}
+
+func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, bool, error) {
+	repoName := repoInfo.Name.Name()
+	// If endpoint does not support CanonicalName, use the RemoteName instead
+	if endpoint.TrimHostname {
+		repoName = reference.Path(repoInfo.Name)
+	}
+	repoNameRef, err := reference.WithName(repoName)
+	if err != nil {
+		return nil, false, err
+	}
+
+	tr, err := GetDistClientTransport(ctx, dockerCli, repoInfo, endpoint, repoName)
+	if err != nil {
+		return nil, false, err
+	}
+	repo, err := client.NewRepository(ctx, repoNameRef, endpoint.URL.String(), tr)
+	if err != nil {
+		return nil, false, err
+	}
+	return repo, true, nil
+}
+
+func GetDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
+	// get the http transport, this will be used in a client to upload manifest
+	base := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).Dial,
+		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:     endpoint.TLSConfig,
+		DisableKeepAlives:   true,
+	}
+
+	authConfig := command.ResolveAuthConfig(ctx, dockerCli, repoInfo.Index)
+	modifiers := registry.DockerHeaders(dockerversion.DockerUserAgent(nil), http.Header{})
+	authTransport := transport.NewTransport(base, modifiers...)
+	challengeManager, confirmedV2, err := registry.PingV2Registry(endpoint.URL, authTransport)
+	if err != nil {
+		return nil, errors.Wrap(err, "error pinging v2 registry")
+	}
+	if !confirmedV2 {
+		return nil, fmt.Errorf("unsupported registry version")
+	}
+	if authConfig.RegistryToken != "" {
+		passThruTokenHandler := &existingTokenHandler{token: authConfig.RegistryToken}
+		modifiers = append(modifiers, auth.NewAuthorizer(challengeManager, passThruTokenHandler))
+	} else {
+		creds := registry.NewStaticCredentialStore(&authConfig)
+		tokenHandler := auth.NewTokenHandler(authTransport, creds, repoName, "*")
+		basicHandler := auth.NewBasicHandler(creds)
+		modifiers = append(modifiers, auth.NewAuthorizer(challengeManager, tokenHandler, basicHandler))
+	}
+	return transport.NewTransport(base, modifiers...), nil
+}
+
+func continueOnError(err error) bool {
+	switch v := err.(type) {
+	case errcode.Errors:
+		if len(v) == 0 {
+			return true
+		}
+		return continueOnError(v[0])
+	case errcode.Error:
+		e := err.(errcode.Error)
+		switch e.Code {
+		// @TODO: We should try remaning endpoints in these cases?
+		case errcode.ErrorCodeUnauthorized, v2.ErrorCodeManifestUnknown, v2.ErrorCodeNameUnknown:
+			return true
+		}
+		return false
+	case *client.UnexpectedHTTPResponseError:
+		return true
+	case ImageConfigPullError:
+		return false
+	}
+	// let's be nice and fallback if the error is a completely
+	// unexpected one.
+	// If new errors have to be handled in some way, please
+	// add them to the switch above.
+	return true
+}
+
+func makeImgManifestInspect(name string, img *Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
+	var digest digest.Digest
+	if err := mfInfo.digest.Validate(); err == nil {
+		digest = mfInfo.digest
+	}
+
+	if mediaType == manifestlist.MediaTypeManifestList {
+		return &ImgManifestInspect{
+			MediaType: mediaType,
+			Digest:    digest,
+		}
+	}
+
+	var digests []string
+	for _, blobDigest := range mfInfo.blobDigests {
+		digests = append(digests, blobDigest.String())
+	}
+	return &ImgManifestInspect{
+		RefName:         name,
+		Size:            mfInfo.length,
+		MediaType:       mediaType,
+		Tag:             tag,
+		Digest:          digest,
+		RepoTags:        tagList,
+		Comment:         img.Comment,
+		Created:         img.Created.Format(time.RFC3339Nano),
+		ContainerConfig: &img.ContainerConfig,
+		DockerVersion:   img.DockerVersion,
+		Author:          img.Author,
+		Config:          img.Config,
+		Architecture:    mfInfo.platform.Architecture,
+		OS:              mfInfo.platform.OS,
+		OSVersion:       mfInfo.platform.OSVersion,
+		OSFeatures:      mfInfo.platform.OSFeatures,
+		Variant:         mfInfo.platform.Variant,
+		Features:        mfInfo.platform.Features,
+		References:      digests,
+		LayerDigests:    mfInfo.layers,
+		CanonicalJSON:   mfInfo.jsonBytes,
+	}
 }
