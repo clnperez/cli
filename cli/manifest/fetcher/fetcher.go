@@ -30,12 +30,11 @@ import (
 )
 
 type ManifestFetcher struct {
-	endpoint    registry.APIEndpoint
-	repoInfo    *registry.RepositoryInfo
-	repo        distribution.Repository
-	confirmedV2 bool
-	authConfig  types.AuthConfig
-	service     registry.Service
+	endpoint   registry.APIEndpoint
+	repoInfo   *registry.RepositoryInfo
+	repo       distribution.Repository
+	authConfig types.AuthConfig
+	service    registry.Service
 }
 
 type manifestInfo struct {
@@ -71,7 +70,7 @@ func (mf *ManifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref
 	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
 	var err error
 
-	mf.repo, mf.confirmedV2, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint, nil, &mf.authConfig, "pull")
+	mf.repo, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint, nil, &mf.authConfig, "pull")
 	if err != nil {
 		logrus.Debugf("Error getting v2 registry: %v", err)
 		return nil, err
@@ -122,10 +121,6 @@ func (mf *ManifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	if manifest == nil {
 		return nil, fmt.Errorf("image manifest does not exist for tag or digest %q", tagOrDigest)
 	}
-
-	// If manSvc.Get succeeded, we can be confident that the registry on
-	// the other side speaks the v2 protocol.
-	mf.confirmedV2 = true
 
 	tagList, err = mf.repo.Tags(ctx).All(ctx)
 	if err != nil {
@@ -331,7 +326,7 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 	return &manifestListInspect{imageInfos: imageList, mfInfos: mfInfos, mediaTypes: mediaType}, err
 }
 
-func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, bool, error) {
+func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, error) {
 	repoName := repoInfo.Name.Name()
 	// If endpoint does not support CanonicalName, use the RemoteName instead
 	if endpoint.TrimHostname {
@@ -339,18 +334,18 @@ func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *regis
 	}
 	repoNameRef, err := reference.WithName(repoName)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	tr, err := GetDistClientTransport(ctx, dockerCli, repoInfo, endpoint, repoName)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	repo, err := client.NewRepository(ctx, repoNameRef, endpoint.URL.String(), tr)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	return repo, true, nil
+	return repo, nil
 }
 
 func GetDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
