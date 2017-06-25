@@ -1,8 +1,9 @@
-package manifest
+package fetcher
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	containerTypes "github.com/docker/docker/api/types/container"
@@ -10,20 +11,12 @@ import (
 )
 
 // recoverableError
-type recoverableError struct {
+type RecoverableError struct {
 	original error
 }
 
-func (e recoverableError) Error() string {
+func (e RecoverableError) Error() string {
 	return fmt.Sprintf("non-fatal fetch error: %e", e.original.Error())
-}
-
-// dirOpenError
-type dirOpenError struct {
-}
-
-func (e dirOpenError) Error() string {
-	return "cannot perform open on a directory"
 }
 
 // ImageConfigPullError is an error pulling the image config blob
@@ -87,7 +80,6 @@ type History struct {
 	EmptyLayer bool `json:"empty_layer,omitempty"`
 }
 
-// Image mirrors the docker/docker/image Image type and should be kept in synch
 type Image struct {
 	// ID is a unique 64 character identifier of the image
 	ID string `json:"id,omitempty"`
@@ -138,4 +130,17 @@ func NewImageFromJSON(src []byte) (*Image, error) {
 	img.rawJSON = src
 
 	return img, nil
+}
+
+type existingTokenHandler struct {
+	token string
+}
+
+func (th *existingTokenHandler) AuthorizeRequest(req *http.Request, params map[string]string) error {
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", th.token))
+	return nil
+}
+
+func (th *existingTokenHandler) Scheme() string {
+	return "bearer"
 }
