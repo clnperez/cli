@@ -16,66 +16,6 @@ import (
 	"github.com/docker/docker/registry"
 )
 
-func loadManifest(manifest string, transaction string) ([]fetcher.ImgManifestInspect, error) {
-
-	// Load either a single manifest (if transaction is "", that's fine), or a
-	// manifest list
-	var foundImages []fetcher.ImgManifestInspect
-	fd, err := getManifestFd(manifest, transaction)
-	if err != nil {
-		if _, dirOpen := err.(dirOpenError); !dirOpen {
-			return nil, err
-		}
-	}
-	if fd != nil {
-		defer fd.Close()
-		_, err := fd.Stat()
-		if err != nil {
-			return nil, err
-		}
-		mfInspect, err := localManifestToManifestInspect(manifest, transaction)
-		if err != nil {
-			return nil, err
-		}
-		foundImages = append(foundImages, mfInspect)
-	}
-	return foundImages, nil
-}
-
-func loadManifestList(transaction string) (foundImages []fetcher.ImgManifestInspect, _ error) {
-	manifests, err := getListFilenames(transaction)
-	if err != nil {
-		return nil, err
-	}
-	for _, manifestFile := range manifests {
-		fileParts := strings.Split(manifestFile, string(filepath.Separator))
-		numParts := len(fileParts)
-		mfInspect, err := localManifestToManifestInspect(fileParts[numParts-1], transaction)
-		if err != nil {
-			return nil, err
-		}
-		foundImages = append(foundImages, mfInspect)
-	}
-	return foundImages, nil
-}
-
-func storeManifest(imgInspect fetcher.ImgManifestInspect, name, transaction string) error {
-	// Store this image manifest so that it can be annotated.
-	// Store the manifests in a user's home to prevent conflict.
-	manifestBase, err := buildBaseFilename()
-	transaction = makeFilesafeName(transaction)
-	if err != nil {
-		return err
-	}
-	os.MkdirAll(filepath.Join(manifestBase, transaction), 0755)
-	logrus.Debugf("Storing  %s", name)
-	if err = updateMfFile(imgInspect, name, transaction); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // nolint: gocyclo
 func getImageData(dockerCli command.Cli, name string, transactionID string, fetchOnly bool) ([]fetcher.ImgManifestInspect, *registry.RepositoryInfo, error) {
 
@@ -205,4 +145,64 @@ func getImageData(dockerCli command.Cli, name string, transactionID string, fetc
 
 	return nil, nil, lastErr
 
+}
+
+func loadManifest(manifest string, transaction string) ([]fetcher.ImgManifestInspect, error) {
+
+	// Load either a single manifest (if transaction is "", that's fine), or a
+	// manifest list
+	var foundImages []fetcher.ImgManifestInspect
+	fd, err := getManifestFd(manifest, transaction)
+	if err != nil {
+		if _, dirOpen := err.(dirOpenError); !dirOpen {
+			return nil, err
+		}
+	}
+	if fd != nil {
+		defer fd.Close()
+		_, err := fd.Stat()
+		if err != nil {
+			return nil, err
+		}
+		mfInspect, err := localManifestToManifestInspect(manifest, transaction)
+		if err != nil {
+			return nil, err
+		}
+		foundImages = append(foundImages, mfInspect)
+	}
+	return foundImages, nil
+}
+
+func loadManifestList(transaction string) (foundImages []fetcher.ImgManifestInspect, _ error) {
+	manifests, err := getListFilenames(transaction)
+	if err != nil {
+		return nil, err
+	}
+	for _, manifestFile := range manifests {
+		fileParts := strings.Split(manifestFile, string(filepath.Separator))
+		numParts := len(fileParts)
+		mfInspect, err := localManifestToManifestInspect(fileParts[numParts-1], transaction)
+		if err != nil {
+			return nil, err
+		}
+		foundImages = append(foundImages, mfInspect)
+	}
+	return foundImages, nil
+}
+
+func storeManifest(imgInspect fetcher.ImgManifestInspect, name, transaction string) error {
+	// Store this image manifest so that it can be annotated.
+	// Store the manifests in a user's home to prevent conflict.
+	manifestBase, err := buildBaseFilename()
+	transaction = makeFilesafeName(transaction)
+	if err != nil {
+		return err
+	}
+	os.MkdirAll(filepath.Join(manifestBase, transaction), 0755)
+	logrus.Debugf("Storing  %s", name)
+	if err = updateMfFile(imgInspect, name, transaction); err != nil {
+		return err
+	}
+
+	return nil
 }
