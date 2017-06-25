@@ -64,54 +64,53 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 	// output basic informative details about the image
 	if len(imgInspect) == 1 {
 		// this is a basic single manifest
-		err = json.Indent(&prettyJSON, imgInspect[0].CanonicalJSON, "", "    ")
-		if err != nil {
-			return err
-		}
-		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 		if !opts.verbose {
+			err = json.Indent(&prettyJSON, imgInspect[0].CanonicalJSON, "", "    ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
 			return nil
 		}
-		mfd, _, err := buildManifestObj(targetRepo, imgInspect[0])
+		jsonBytes, err := json.MarshalIndent(imgInspect[0], "", "\t")
 		if err != nil {
 			return err
 		}
-		jsonBytes, err := json.MarshalIndent(mfd, "", "\t")
+		fmt.Fprintln(dockerCli.Out(), "combined image and manifest summary:")
+		dockerCli.Out().Write(jsonBytes)
+		fmt.Println()
+		return nil
+	}
+
+	if !opts.verbose {
+		manifests := []manifestlist.ManifestDescriptor{}
+		// More than one response. This is a manifest list.
+		for _, img := range imgInspect {
+			mfd, _, err := buildManifestObj(targetRepo, img)
+			if err != nil {
+				return fmt.Errorf("error assembling ManifestDescriptor")
+			}
+			manifests = append(manifests, mfd)
+		}
+		deserializedML, err := manifestlist.FromDescriptors(manifests)
+		if err != nil {
+			return err
+		}
+		jsonBytes, err := deserializedML.MarshalJSON()
 		if err != nil {
 			return err
 		}
 		fmt.Fprintln(dockerCli.Out(), string(jsonBytes))
 		return nil
 	}
-
-	manifests := []manifestlist.ManifestDescriptor{}
-	// More than one response. This is a manifest list.
+	fmt.Fprintln(dockerCli.Out(), "combined image and manifest summaries:")
 	for _, img := range imgInspect {
-		mfd, _, err := buildManifestObj(targetRepo, img)
-		if err != nil {
-			return fmt.Errorf("error assembling ManifestDescriptor")
-		}
-		manifests = append(manifests, mfd)
-	}
-	deserializedML, err := manifestlist.FromDescriptors(manifests)
-	if err != nil {
-		return err
-	}
-	jsonBytes, err := deserializedML.MarshalJSON()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(dockerCli.Out(), string(jsonBytes))
-	if !opts.verbose {
-		return nil
-	}
-	for _, img := range imgInspect {
-		prettyJSON.Reset()
-		err = json.Indent(&prettyJSON, img.CanonicalJSON, "", "    ")
+		jsonBytes, err := json.MarshalIndent(img, "", "\t")
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(dockerCli.Out(), prettyJSON.String())
+		dockerCli.Out().Write(jsonBytes)
+		fmt.Println()
 	}
 	return nil
 }
