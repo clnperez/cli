@@ -80,7 +80,7 @@ func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 
 	mf := imgInspect[0]
 
-	newMf, err := unmarshalIntoManifestInspect(imgID, transactionID)
+	newMf, err := localManifestToManifestInspect(imgID, transactionID)
 	if err != nil {
 		return err
 	}

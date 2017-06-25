@@ -9,6 +9,7 @@ import (
 
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/manifest/fetcher"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
@@ -44,7 +45,7 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 
 	// Get the data and then format it
 	var (
-		imgInspect []ImgManifestInspect
+		imgInspect []fetcher.ImgManifestInspect
 		prettyJSON bytes.Buffer
 	)
 

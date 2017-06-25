@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -23,15 +22,12 @@ import (
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/api/v2"
 	"github.com/docker/distribution/registry/client"
-	"github.com/docker/distribution/registry/client/auth"
-	"github.com/docker/distribution/registry/client/transport"
 	digest "github.com/opencontainers/go-digest"
 
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/dockerversion"
+	"github.com/docker/cli/cli/manifest/fetcher"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/registry"
 )
@@ -40,19 +36,6 @@ type pushOpts struct {
 	newRef string
 	file   string
 	purge  bool
-}
-
-type existingTokenHandler struct {
-	token string
-}
-
-func (th *existingTokenHandler) AuthorizeRequest(req *http.Request, params map[string]string) error {
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", th.token))
-	return nil
-}
-
-func (th *existingTokenHandler) Scheme() string {
-	return "bearer"
 }
 
 // YamlInput represents the YAML format input to the pushml
@@ -166,7 +149,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		for _, manifestFile := range manifests {
 			fileParts := strings.Split(manifestFile, string(filepath.Separator))
 			numParts := len(fileParts)
-			mfstInspect, err := unmarshalIntoManifestInspect(fileParts[numParts-1], fileParts[numParts-2])
+			mfstInspect, err := localManifestToManifestInspect(fileParts[numParts-1], fileParts[numParts-2])
 			if err != nil {
 				return err
 			}
@@ -221,7 +204,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
-	tr, err := getDistClientTransport(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
+	tr, err := fetcher.GetDistClientTransport(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
 	if err != nil {
 		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
@@ -327,7 +310,7 @@ func getYamlInput(yamlFile string) (YamlInput, error) {
 	return yamlInput, nil
 }
 
-func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect ImgManifestInspect) (manifestlist.ManifestDescriptor, *registry.RepositoryInfo, error) {
+func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect fetcher.ImgManifestInspect) (manifestlist.ManifestDescriptor, *registry.RepositoryInfo, error) {
 
 	manifestRef, err := reference.ParseNormalizedNamed(mfInspect.RefName)
 	if err != nil {
@@ -366,7 +349,7 @@ func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect ImgManifest
 	return manifest, repoInfo, nil
 }
 
-func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, mfRepoName reference.Named) ([]blobMount, []manifestPush) {
+func buildBlobMountRequestLists(mfstInspect fetcher.ImgManifestInspect, targetRepoName, mfRepoName reference.Named) ([]blobMount, []manifestPush) {
 
 	var (
 		blobMountRequests []blobMount
@@ -386,67 +369,7 @@ func buildBlobMountRequestLists(mfstInspect ImgManifestInspect, targetRepoName, 
 		JSONBytes: mfstInspect.CanonicalJSON,
 		MediaType: mfstInspect.MediaType,
 	})
-
 	return blobMountRequests, manifestRequests
-}
-
-// @TODO: Move this (or getDistClientTransport?) into package
-func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, bool, error) {
-	repoName := repoInfo.Name.Name()
-	// If endpoint does not support CanonicalName, use the RemoteName instead
-	if endpoint.TrimHostname {
-		repoName = reference.Path(repoInfo.Name)
-	}
-	repoNameRef, err := reference.WithName(repoName)
-	if err != nil {
-		return nil, false, err
-	}
-
-	tr, err := getDistClientTransport(ctx, dockerCli, repoInfo, endpoint, repoName)
-	if err != nil {
-		return nil, false, err
-	}
-	repo, err := client.NewRepository(ctx, repoNameRef, endpoint.URL.String(), tr)
-	if err != nil {
-		return nil, false, err
-	}
-	return repo, true, nil
-}
-
-func getDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
-	// get the http transport, this will be used in a client to upload manifest
-	base := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).Dial,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:     endpoint.TLSConfig,
-		DisableKeepAlives:   true,
-	}
-
-	authConfig := command.ResolveAuthConfig(ctx, dockerCli, repoInfo.Index)
-	modifiers := registry.DockerHeaders(dockerversion.DockerUserAgent(nil), http.Header{})
-	authTransport := transport.NewTransport(base, modifiers...)
-	challengeManager, confirmedV2, err := registry.PingV2Registry(endpoint.URL, authTransport)
-	if err != nil {
-		return nil, errors.Wrap(err, "error pinging v2 registry")
-	}
-	if !confirmedV2 {
-		return nil, fmt.Errorf("unsupported registry version")
-	}
-	if authConfig.RegistryToken != "" {
-		passThruTokenHandler := &existingTokenHandler{token: authConfig.RegistryToken}
-		modifiers = append(modifiers, auth.NewAuthorizer(challengeManager, passThruTokenHandler))
-	} else {
-		creds := registry.NewStaticCredentialStore(&authConfig)
-		tokenHandler := auth.NewTokenHandler(authTransport, creds, repoName, "*")
-		basicHandler := auth.NewBasicHandler(creds)
-		modifiers = append(modifiers, auth.NewAuthorizer(challengeManager, tokenHandler, basicHandler))
-	}
-	return transport.NewTransport(base, modifiers...), nil
 }
 
 func createManifestURLFromRef(targetRef reference.Named, urlBuilder *v2.URLBuilder) (string, error) {

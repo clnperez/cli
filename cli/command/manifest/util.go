@@ -11,12 +11,21 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/cli/cli/manifest/fetcher"
 	"github.com/docker/docker/pkg/homedir"
 )
 
 type osArch struct {
 	os   string
 	arch string
+}
+
+// dirOpenError
+type dirOpenError struct {
+}
+
+func (e dirOpenError) Error() string {
+	return "cannot perform open on a directory"
 }
 
 //Remove any unsupported os/arch combo
@@ -129,24 +138,24 @@ func mfToFilename(manifest, transaction string) (string, error) {
 	return filepath.Join(baseDir, makeFilesafeName(transaction), makeFilesafeName(manifest)), nil
 }
 
-func unmarshalIntoManifestInspect(manifest, transaction string) (ImgManifestInspect, error) {
+func localManifestToManifestInspect(manifest, transaction string) (fetcher.ImgManifestInspect, error) {
 
-	var newMf ImgManifestInspect
+	var newMI fetcher.ImgManifestInspect
 	filename, err := mfToFilename(manifest, transaction)
 	if err != nil {
-		return ImgManifestInspect{}, err
+		return newMI, err
 	}
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return ImgManifestInspect{}, err
+		return newMI, err
 	}
-	if err := json.Unmarshal(buf, &newMf); err != nil {
-		return ImgManifestInspect{}, err
+	if err := json.Unmarshal(buf, &newMI); err != nil {
+		return newMI, err
 	}
-	return newMf, nil
+	return newMI, nil
 }
 
-func updateMfFile(newMf ImgManifestInspect, mfName, transaction string) error {
+func updateMfFile(newMI fetcher.ImgManifestInspect, mfName, transaction string) error {
 	fileName, err := mfToFilename(mfName, transaction)
 	if err != nil {
 		return err
@@ -159,7 +168,7 @@ func updateMfFile(newMf ImgManifestInspect, mfName, transaction string) error {
 		return err
 	}
 	defer fd.Close()
-	theBytes, err := json.Marshal(newMf)
+	theBytes, err := json.Marshal(newMI)
 	if err != nil {
 		return err
 	}
