@@ -1,7 +1,6 @@
 package fetcher
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -180,12 +179,12 @@ func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 		return nil, mfInfo, err
 	}
 
-	unmarshalledConfig, err := unmarshalConfig(configJSON)
+	img, err = NewImageFromJSON(configJSON)
 	if err != nil {
 		return nil, mfInfo, err
 	}
 	if runtime.GOOS == "windows" {
-		if unmarshalledConfig.RootFS == nil {
+		if img.RootFS == nil {
 			return nil, mfInfo, errors.New("image config has no rootfs section")
 		}
 	}
@@ -197,10 +196,6 @@ func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 		mfInfo.layers = append(mfInfo.layers, layer.Digest.String())
 	}
 
-	img, err = NewImageFromJSON(configJSON)
-	if err != nil {
-		return nil, mfInfo, err
-	}
 	// add the size of the manifest to the image response; needed for assembling proper
 	// manifest lists
 	_, mfBytes, err := mfst.Payload()
@@ -239,14 +234,6 @@ func (mf *ManifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst dige
 	}
 
 	return configJSON, nil
-}
-
-func unmarshalConfig(configJSON []byte) (Image, error) {
-	var unmarshalledConfig Image
-	if err := json.Unmarshal(configJSON, &unmarshalledConfig); err != nil {
-		return Image{}, err
-	}
-	return unmarshalledConfig, nil
 }
 
 // schema2ManifestDigest computes the manifest digest, and, if pulling by
@@ -298,14 +285,12 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 			return nil, err
 		}
 
-		thisDigest := manifestDescriptor.Digest
-		thisPlatform := manifestDescriptor.Platform
-		manifest, err := manSvc.Get(ctx, thisDigest)
+		manifest, err := manSvc.Get(ctx, manifestDescriptor.Digest)
 		if err != nil {
 			return nil, err
 		}
 
-		manifestRef, err := reference.WithDigest(ref, thisDigest)
+		manifestRef, err := reference.WithDigest(ref, manifestDescriptor.Digest)
 		if err != nil {
 			return nil, err
 		}
@@ -314,8 +299,11 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 			return nil, fmt.Errorf("unsupported manifest format: %s v")
 		}
 		img, mfInfo, err := mf.pullSchema2(ctx, manifestRef, *v)
+		if err != nil {
+			return nil, err
+		}
 		imageList = append(imageList, img)
-		mfInfo.platform = thisPlatform
+		mfInfo.platform = manifestDescriptor.Platform
 		mfInfos = append(mfInfos, mfInfo)
 		mediaType = append(mediaType, schema2.MediaTypeManifest)
 		if err != nil {

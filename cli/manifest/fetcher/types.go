@@ -46,19 +46,16 @@ type ImgManifestInspect struct {
 	Config          *containerTypes.Config `json:"config"`
 	References      []string               `json:"references"`
 	LayerDigests    []string               `json:"layers_digests"`
-	// The following are top-level objects because nested json from a file
-	// won't unmarshal correctly.
-	Architecture string   `json:"architecture"`
-	OS           string   `json:"os"`
-	OSVersion    string   `json:"os.version,omitempty"`
-	OSFeatures   []string `json:"os.features,omitempty"`
-	Variant      string   `json:"variant,omitempty"`
-	Features     []string `json:"features,omitempty"`
-	// This one's prettier at the end
-	CanonicalJSON []byte `json:"json"`
+	Architecture    string                 `json:"architecture"`
+	OS              string                 `json:"os"`
+	OSVersion       string                 `json:"os.version,omitempty"`
+	OSFeatures      []string               `json:"os.features,omitempty"`
+	Variant         string                 `json:"variant,omitempty"`
+	Features        []string               `json:"features,omitempty"`
+	CanonicalJSON   []byte                 `json:"json"`
 }
 
-// @TODO: Move the following to a more universal location (outside the manifest pkg)
+// @TODO: consider moving the following to a more universal location (outside the manifest/fetcher pkg)
 type RootFS struct {
 	Type    string          `json:"type"`
 	DiffIDs []digest.Digest `json:"diff_ids,omitempty"`
