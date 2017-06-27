@@ -70,6 +70,16 @@ type manifestPush struct {
 	MediaType string
 }
 
+type manifestListPush struct {
+	targetRepo        *registry.RepositoryInfo
+	targetRef         reference.Named
+	targetEndpoint    registry.APIEndpoint
+	targetName        string
+	list              manifestlist.ManifestList
+	mountRequests     []manifestPush
+	blobMountRequests []blobMount
+}
+
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 	opts := pushOpts{}
@@ -97,6 +107,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		fullTargetRef, targetRef, bareRef reference.Named
 		blobMountRequests                 []blobMount
 		manifestRequests                  []manifestPush
+		yamlInput                         YamlInput
 		err                               error
 	)
 
@@ -171,24 +182,79 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 				manifestRequests = append(manifestRequests, mr...)
 			}
 		}
-	}
-	// else { // add https://github.com/clnperez/docker/commit/ec8e5dd274fb6eb5e6cf6df863e56626ffeb562f back }
+	} else {
+		for _, mfEntry := range yamlInput.Manifests {
+			mfstInspects, repoInfo, err := getImageData(dockerCli, mfEntry.Image, targetRef.Name(), true)
+			if err != nil {
+				return err
+			}
+			if len(mfstInspects) == 0 {
+				return fmt.Errorf("manifest %s not found", mfEntry.Image)
+			}
+			mfstInspect := mfstInspects[0]
+			if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
+				return fmt.Errorf("malformed manifest object. Cannot push to registry.")
+			}
+			manifest, repoInfo, err := buildManifestObj(targetRepo, mfstInspect)
+			if err != nil {
+				return err
+			}
+			manifestList.Manifests = append(manifestList.Manifests, manifest)
 
+			// if this image is in a different repo, we need to add the layer/blob digests to the list of
+			// requested blob mounts (cross-repository push) before pushing the manifest list
+			manifestRepoName := reference.Path(repoInfo.Name)
+			if targetRepoName != manifestRepoName {
+				bmr, mr := buildBlobMountRequestLists(mfstInspect, targetRepo.Name, repoInfo.Name)
+				blobMountRequests = append(blobMountRequests, bmr...)
+				manifestRequests = append(manifestRequests, mr...)
+
+			}
+		}
+	}
+
+	mlp := manifestListPush{
+		targetRepo:        targetRepo,
+		targetName:        targetRepoName,
+		targetRef:         targetRef,
+		targetEndpoint:    targetEndpoint,
+		list:              manifestList,
+		mountRequests:     manifestRequests,
+		blobMountRequests: blobMountRequests,
+	}
+	err = doListPush(ctx, dockerCli, mlp, bareRef)
+	if err != nil {
+		return err
+	}
+	if opts.purge == true {
+		targetFilename, _ := mfToFilename(fullTargetRef.String(), "")
+		logrus.Debugf("deleting files at %s", targetFilename)
+		if err := os.RemoveAll(targetFilename); err != nil {
+			// Not a fatal error
+			logrus.Info("unable to clean up manifest files in %s", targetFilename)
+		}
+	}
+	return nil
+}
+
+func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestListPush, bareRef reference.Named) error {
+
+	targetUrl := listPush.targetEndpoint.URL.String()
 	// Set the schema version
-	manifestList.Versioned = manifestlist.SchemaVersion
+	listPush.list.Versioned = manifestlist.SchemaVersion
 
-	urlBuilder, err := v2.NewURLBuilderFromString(targetEndpoint.URL.String(), false)
-	logrus.Debugf("manifest: put: target endpoint url: %s", targetEndpoint.URL.String())
+	urlBuilder, err := v2.NewURLBuilderFromString(targetUrl, false)
+	logrus.Debugf("manifest: put: target endpoint url: %s", targetUrl)
 	if err != nil {
-		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetEndpoint.URL.String())
+		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetUrl)
 	}
-	pushURL, err := createManifestURLFromRef(targetRef, urlBuilder)
+	pushURL, err := createManifestURLFromRef(listPush.targetRef, urlBuilder)
 	if err != nil {
-		return errors.Wrapf(err, "error setting up repository endpoint and references for %q: %v", targetRef)
+		return errors.Wrapf(err, "error setting up repository endpoint and references for %q: %v", listPush.targetRef)
 	}
 	logrus.Debugf("manifest list push url: %s", pushURL)
 
-	deserializedManifestList, err := manifestlist.FromDescriptors(manifestList.Manifests)
+	deserializedManifestList, err := manifestlist.FromDescriptors(listPush.list.Manifests)
 	if err != nil {
 		return errors.Wrap(err, "cannot deserialize manifest list")
 	}
@@ -204,7 +270,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
-	tr, err := fetcher.GetDistClientTransport(ctx, dockerCli, targetRepo, targetEndpoint, targetRepoName)
+	tr, err := fetcher.GetDistClientTransport(ctx, dockerCli, listPush.targetRepo, listPush.targetEndpoint, listPush.targetName)
 	if err != nil {
 		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
@@ -213,14 +279,15 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	// before we push the manifest list, if we have any blob mount requests, we need
 	// to ask the registry to mount those blobs in our target so they are available
 	// as references
-	if err := mountBlobs(ctx, httpClient, targetEndpoint.URL.String(), targetRef, blobMountRequests); err != nil {
+	if err := mountBlobs(ctx, httpClient, targetUrl, listPush.targetRef, listPush.blobMountRequests); err != nil {
 		return errors.Wrap(err, "couldn't mount blobs for cross-repository push")
 	}
 
 	// we also must push any manifests that are referenced in the manifest list into
 	// the target namespace
 	// Use the untagged target for this so the digest is used
-	if err := pushReferences(httpClient, urlBuilder, bareRef, manifestRequests); err != nil {
+	// *could* i use targetRef instead of bareRef??
+	if err := pushReferences(httpClient, urlBuilder, bareRef, listPush.mountRequests); err != nil {
 		return errors.Wrap(err, "couldn't push manifests referenced in our manifest list")
 	}
 
@@ -236,15 +303,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		if err != nil {
 			return err
 		}
-		if opts.purge == true {
-			targetFilename, _ := mfToFilename(fullTargetRef.String(), "")
-			logrus.Debugf("deleting files at %s", targetFilename)
-			if err := os.RemoveAll(targetFilename); err != nil {
-				// Not a fatal error
-				logrus.Info("unable to clean up manifest files in %s", targetFilename)
-			}
-		}
-		logrus.Infof("succesfully pushed manifest list %s with digest %s", targetRef, dgst)
+		logrus.Infof("succesfully pushed manifest list %s with digest %s", listPush.targetRef, dgst)
 		return nil
 	}
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
