@@ -111,7 +111,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		err                               error
 	)
 
-	// First get all the info we'll need from either a yaml file, or a user's locally-creatd manifest transation.
+	// First get all the info we'll need from either a yaml file, or a user's locally-creatd manifest transaction.
 	numArgs := len(args)
 	if numArgs > 1 {
 		return fmt.Errorf("more than one argument provided to 'manifest push'")
@@ -193,7 +193,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 			}
 			mfstInspect := mfstInspects[0]
 			if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
-				return fmt.Errorf("malformed manifest object. Cannot push to registry.")
+				return fmt.Errorf("malformed manifest object. cannot push to registry.")
 			}
 			manifest, repoInfo, err := buildManifestObj(targetRepo, mfstInspect)
 			if err != nil {
@@ -226,7 +226,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	if err != nil {
 		return err
 	}
-	if opts.purge == true {
+	if opts.purge {
 		targetFilename, _ := mfToFilename(fullTargetRef.String(), "")
 		logrus.Debugf("deleting files at %s", targetFilename)
 		if err := os.RemoveAll(targetFilename); err != nil {
@@ -239,14 +239,14 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 
 func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestListPush, bareRef reference.Named) error {
 
-	targetUrl := listPush.targetEndpoint.URL.String()
+	targetURL := listPush.targetEndpoint.URL.String()
 	// Set the schema version
 	listPush.list.Versioned = manifestlist.SchemaVersion
 
-	urlBuilder, err := v2.NewURLBuilderFromString(targetUrl, false)
-	logrus.Debugf("manifest: put: target endpoint url: %s", targetUrl)
+	urlBuilder, err := v2.NewURLBuilderFromString(targetURL, false)
+	logrus.Debugf("manifest: put: target endpoint url: %s", targetURL)
 	if err != nil {
-		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetUrl)
+		return errors.Wrapf(err, "can't create URL builder from endpoint (%s): %v", targetURL)
 	}
 	pushURL, err := createManifestURLFromRef(listPush.targetRef, urlBuilder)
 	if err != nil {
@@ -279,7 +279,7 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 	// before we push the manifest list, if we have any blob mount requests, we need
 	// to ask the registry to mount those blobs in our target so they are available
 	// as references
-	if err := mountBlobs(ctx, httpClient, targetUrl, listPush.targetRef, listPush.blobMountRequests); err != nil {
+	if err := mountBlobs(ctx, httpClient, targetURL, listPush.targetRef, listPush.blobMountRequests); err != nil {
 		return errors.Wrap(err, "couldn't mount blobs for cross-repository push")
 	}
 
@@ -303,7 +303,7 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 		if err != nil {
 			return err
 		}
-		logrus.Infof("succesfully pushed manifest list %s with digest %s", listPush.targetRef, dgst)
+		logrus.Infof("successfully pushed manifest list %s with digest %s", listPush.targetRef, dgst)
 		return nil
 	}
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
@@ -485,7 +485,7 @@ func loadLocalInsecureRegistries() ([]string, error) {
 	// local config and what the daemon they're talking to allows, but we can be okay with that.
 	userHome, err := homedir.GetStatic()
 	if err != nil {
-		return []string{}, fmt.Errorf("manifest create: lookup local insecure registries: Unable to retreive $HOME")
+		return []string{}, fmt.Errorf("manifest create: lookup local insecure registries: Unable to retrieve $HOME")
 	}
 
 	jsonData, err := ioutil.ReadFile(filepath.Join(userHome, ".docker/config.json"))

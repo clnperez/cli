@@ -10,7 +10,7 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
-// recoverableError
+// RecoverableError signifies that other endpoints should be tried
 type RecoverableError struct {
 	original error
 }
@@ -55,8 +55,13 @@ type ImgManifestInspect struct {
 	CanonicalJSON   []byte                 `json:"json"`
 }
 
-// @TODO: consider moving the following to a more universal location (outside the manifest/fetcher pkg)
+// The following mirror data structures from docker/docker/ to avoid importing all of distribtion/
+// Types have been substituted where possible to keep imports to a minimum, but maintain the Image structure
+// for use when unmarshaling docker/docker's image.Image JSON into a fetcher.Image.
+
+// RootFS describes images root filesystem
 type RootFS struct {
+	// @TODO: consider moving the following to a more universal location (outside the manifest/fetcher pkg)
 	Type    string          `json:"type"`
 	DiffIDs []digest.Digest `json:"diff_ids,omitempty"`
 }
@@ -77,6 +82,8 @@ type History struct {
 	EmptyLayer bool `json:"empty_layer,omitempty"`
 }
 
+// Image stores the image configuration
+// It contains docker's v1Image fields for simplicity
 type Image struct {
 	// ID is a unique 64 character identifier of the image
 	ID string `json:"id,omitempty"`

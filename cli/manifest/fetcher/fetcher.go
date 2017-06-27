@@ -28,6 +28,7 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
+// Used to retrieve manifest and image info for an image or manifest list
 type ManifestFetcher struct {
 	endpoint   registry.APIEndpoint
 	repoInfo   *registry.RepositoryInfo
@@ -51,6 +52,7 @@ type manifestListInspect struct {
 	mediaTypes []string
 }
 
+// NewManifestFetcher builds a ManifestFetcher for use with a specific registry
 func NewManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, registryService registry.Service) (ManifestFetcher, error) {
 	switch endpoint.Version {
 	case registry.APIVersion2:
@@ -65,11 +67,12 @@ func NewManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.Reposi
 	return ManifestFetcher{}, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
 }
 
+// Fetch gets the summarized information for an image or manifest list
 func (mf *ManifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
 	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
 	var err error
 
-	mf.repo, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint, nil, &mf.authConfig, "pull")
+	mf.repo, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint)
 	if err != nil {
 		logrus.Debugf("Error getting v2 registry: %v", err)
 		return nil, err
@@ -314,7 +317,7 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 	return &manifestListInspect{imageInfos: imageList, mfInfos: mfInfos, mediaTypes: mediaType}, err
 }
 
-func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, metaHeaders http.Header, authConfig *types.AuthConfig, actions ...string) (distribution.Repository, error) {
+func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint) (distribution.Repository, error) {
 	repoName := repoInfo.Name.Name()
 	// If endpoint does not support CanonicalName, use the RemoteName instead
 	if endpoint.TrimHostname {
@@ -336,6 +339,7 @@ func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *regis
 	return repo, nil
 }
 
+// GetDistClientTransport builds a transport for use in communicating with a registry
 func GetDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
 	// get the http transport, this will be used in a client to upload manifest
 	base := &http.Transport{
