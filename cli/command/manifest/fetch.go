@@ -200,9 +200,6 @@ func storeManifest(imgInspect fetcher.ImgManifestInspect, name, transaction stri
 	}
 	os.MkdirAll(filepath.Join(manifestBase, transaction), 0755)
 	logrus.Debugf("Storing  %s", name)
-	if err = updateMfFile(imgInspect, name, transaction); err != nil {
-		return err
-	}
 
-	return nil
+	return updateMfFile(imgInspect, name, transaction)
 }
