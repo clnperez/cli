@@ -28,7 +28,7 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
-// Used to retrieve manifest and image info for an image or manifest list
+// ManifestFetcher is to retrieve manifest and image info for an image or manifest list
 type ManifestFetcher struct {
 	endpoint   registry.APIEndpoint
 	repoInfo   *registry.RepositoryInfo
@@ -299,7 +299,7 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 		}
 
 		if v, ok = manifest.(*schema2.DeserializedManifest); !ok {
-			return nil, fmt.Errorf("unsupported manifest format: %s v")
+			return nil, fmt.Errorf("unsupported manifest format: %s", v)
 		}
 		img, mfInfo, err := mf.pullSchema2(ctx, manifestRef, *v)
 		if err != nil {
