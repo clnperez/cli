@@ -146,7 +146,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	// for the constituent images:
 	logrus.Debugf("retrieving digests of images...")
 	if opts.file == "" {
-		listPush, err = listFromTransaction(fullTargetRef, targetRepoInfo, targetRepoName)
+		listPush, err = listFromTransaction(targetRepoInfo, targetRepoName, fullTargetRef.String())
 	} else {
 		listPush, err = listFromYAML(dockerCli, fullTargetRef, targetRepoInfo, targetRepoName, yamlInput)
 	}
@@ -246,7 +246,7 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
 }
 
-func listFromTransaction(targetRef reference.Named, targetRepoInfo *registry.RepositoryInfo, targetRepoName string) (manifestListPush, error) {
+func listFromTransaction(targetRepoInfo *registry.RepositoryInfo, targetRepoName, targetRef string) (manifestListPush, error) {
 	var (
 		manifestList      manifestlist.ManifestList
 		blobMountRequests []blobMount
@@ -255,12 +255,12 @@ func listFromTransaction(targetRef reference.Named, targetRepoInfo *registry.Rep
 		manifests         []string
 		err               error
 	)
-	if manifests, err = getListFilenames(targetRef.String()); err != nil {
+	if manifests, err = getListFilenames(targetRef); err != nil {
 		return listPush, err
 	}
 	// @TODO: Is this possible, or will manifests just be nil??
 	if len(manifests) == 0 {
-		return listPush, fmt.Errorf("%s not found", targetRef.String())
+		return listPush, fmt.Errorf("%s not found", targetRef)
 	}
 	// manifests is a list of file paths
 	for _, manifestFile := range manifests {
@@ -314,7 +314,7 @@ func listFromYAML(dockerCli command.Cli, targetRef reference.Named, targetRepoIn
 		}
 		mfstInspect := mfstInspects[0]
 		if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
-			return listPush, fmt.Errorf("malformed manifest object. cannot push to registry.")
+			return listPush, fmt.Errorf("malformed manifest object. cannot push to registry")
 		}
 		manifest, repoInfo, err := buildManifestObj(targetRepoInfo, mfstInspect)
 		if err != nil {

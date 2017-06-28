@@ -16,7 +16,7 @@ type RecoverableError struct {
 }
 
 func (e RecoverableError) Error() string {
-	return fmt.Sprintf("non-fatal fetch error: %e", e.original.Error())
+	return fmt.Sprintf("non-fatal fetch error: %s", e.original.Error())
 }
 
 // ImageConfigPullError is an error pulling the image config blob
@@ -123,7 +123,7 @@ type Image struct {
 	computedID digest.Digest
 }
 
-// NewImgFromJSON creates an Image configuration from json.
+// NewImageFromJSON creates an Image configuration from json.
 func NewImageFromJSON(src []byte) (*Image, error) {
 	img := &Image{}
 

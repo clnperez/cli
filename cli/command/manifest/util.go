@@ -1,9 +1,5 @@
 package manifest
 
-// list of valid os/arch values (see "Optional Environment Variables" section
-// of https://golang.org/doc/install/source
-// Added linux/s390x as we know System z support already exists
-
 import (
 	"encoding/json"
 	"io/ioutil"
@@ -28,7 +24,10 @@ func (e dirOpenError) Error() string {
 	return "cannot perform open on a directory"
 }
 
-//Remove any unsupported os/arch combo
+// Remove any unsupported os/arch combo
+// list of valid os/arch values (see "Optional Environment Variables" section
+// of https://golang.org/doc/install/source
+// Added linux/s390x as we know System z support already exists
 var validOSArches = map[osArch]bool{
 	osArch{os: "darwin", arch: "386"}:      true,
 	osArch{os: "darwin", arch: "amd64"}:    true,
