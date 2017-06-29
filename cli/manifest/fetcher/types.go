@@ -120,7 +120,7 @@ type Image struct {
 
 	// computedID is the ID computed from the hash of the image config.
 	// Not to be confused with the legacy V1 ID in V1Image.
-	computedID digest.Digest
+	computedID digest.Digest // nolint: unused
 }
 
 // NewImageFromJSON creates an Image configuration from json.
