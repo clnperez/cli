@@ -24,7 +24,6 @@ import (
 	"github.com/docker/distribution/registry/client"
 	digest "github.com/opencontainers/go-digest"
 
-	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/manifest/fetcher"
@@ -85,9 +84,9 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 	opts := pushOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "push [newRef | --file pre-annotated-yaml]",
+		Use:   "push [newRef | --file pre-annotated-yaml] [--purge=false]",
 		Short: "Push a manifest list for an image to a repository",
-		Args:  cli.RequiresMinArgs(0),
+		Args:  checkArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return putManifestList(dockerCli, opts, args)
 		},
@@ -108,11 +107,6 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		fullTargetRef, targetRef, bareRef reference.Named
 		err                               error
 	)
-
-	// First get all the info we'll need from either a yaml file, or a user's locally-creatd manifest transaction.
-	if err := checkArgs(opts, args); err != nil {
-		return err
-	}
 
 	if opts.file != "" {
 		yamlInput, err = getYamlInput(opts.file)
@@ -607,13 +601,22 @@ func mountBlobs(ctx context.Context, httpClient *http.Client, targetURL string, 
 	return nil
 }
 
-func checkArgs(opts pushOpts, args []string) error {
+func checkArgs(cmd *cobra.Command, args []string) error {
+	useErr := fmt.Errorf("Incorrect command format.\n Usage: %s", cmd.Use)
 	numArgs := len(args)
 	if numArgs > 1 {
-		return fmt.Errorf("more than one argument provided to 'manifest push'")
+		return useErr
 	}
-	if (numArgs == 0) && (opts.file == "") {
-		return fmt.Errorf("please push using a yaml file or a list created using 'manifest create.'")
+	fileFlag := cmd.Flags().Lookup("file")
+	if fileFlag.Changed && numArgs != 0 {
+		return useErr
+	}
+	if !fileFlag.Changed && numArgs == 0 {
+		return useErr
+	}
+	purgeFlag := cmd.Flags().Lookup("purge")
+	if purgeFlag.Changed && fileFlag.Changed {
+		return fmt.Errorf("using '--purge' doesn't make sense with '--file'")
 	}
 	return nil
 }
