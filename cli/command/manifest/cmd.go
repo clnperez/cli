@@ -27,6 +27,7 @@ func NewManifestCommand(dockerCli *command.DockerCli) *cobra.Command {
 		newInspectCommand(dockerCli),
 		newAnnotateCommand(dockerCli),
 		newPushListCommand(dockerCli),
+		newSaveListCommand(dockerCli),
 	)
 	return cmd
 }

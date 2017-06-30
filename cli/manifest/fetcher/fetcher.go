@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/docker/cli/cli/command"
+	climanifest "github.com/docker/cli/cli/manifest"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/manifest/schema2"
@@ -47,7 +48,7 @@ type manifestInfo struct {
 }
 
 type manifestListInspect struct {
-	imageInfos []*Image
+	imageInfos []*climanifest.Image
 	mfInfos    []manifestInfo
 	mediaTypes []string
 }
@@ -130,7 +131,7 @@ func (mf *ManifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	}
 
 	var (
-		images    []*Image
+		images    []*climanifest.Image
 		mfInfos   []manifestInfo
 		mediaType []string
 	)
@@ -164,9 +165,9 @@ func (mf *ManifestFetcher) fetchWithRepository(ctx context.Context, ref referenc
 	return imageList, nil
 }
 
-func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
+func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*climanifest.Image, manifestInfo, error) {
 	var (
-		img *Image
+		img *climanifest.Image
 	)
 
 	mfDigest, err := schema2ManifestDigest(ref, mfst)
@@ -182,7 +183,7 @@ func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 		return nil, mfInfo, err
 	}
 
-	img, err = NewImageFromJSON(configJSON)
+	img, err = climanifest.NewImageFromJSON(configJSON)
 	if err != nil {
 		return nil, mfInfo, err
 	}
@@ -270,7 +271,7 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 // platform-specifc manifests.
 func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) (*manifestListInspect, error) {
 	var (
-		imageList = []*Image{}
+		imageList = []*climanifest.Image{}
 		mfInfos   = []manifestInfo{}
 		mediaType = []string{}
 		v         *schema2.DeserializedManifest
@@ -403,7 +404,7 @@ func continueOnError(err error) bool {
 	return true
 }
 
-func makeImgManifestInspect(name string, img *Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
+func makeImgManifestInspect(name string, img *climanifest.Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
 	var digest digest.Digest
 	if err := mfInfo.digest.Validate(); err == nil {
 		digest = mfInfo.digest
