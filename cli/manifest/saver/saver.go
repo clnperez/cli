@@ -8,27 +8,44 @@ import (
 	//"io/ioutil"
 	"os"
 	"path/filepath"
-	"regexp"
+	//"regexp"
 
-	climanifest "github.com/docker/cli/cli/manifest"
-	"github.com/docker/distribution/manifest/manifestlist"
-	digest "github.com/opencontainers/go-digest"
+	//climanifest "github.com/docker/cli/cli/manifest"
+	//"github.com/docker/distribution/manifest/manifestlist"
+	//digest "github.com/opencontainers/go-digest"
+	imgspec "github.com/opencontainers/image-spec/specs-go"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 func ManifestSaveFromArchives(outFile string, archives []string) error {
+	// all archives should be the same (docker image, or oci)
+	// Add a format flag like PR 122
+
 	fmt.Println("Save from archives: %s", archives)
 
-	index := ociv1.Index{}
-	platforms := make(map[string]manifestlist.PlatformSpec)
-
-	// Loop through archives, untar, look in manifest.json to get platform info
-	// & append to list.
+	index := ociv1.Index{
+		Versioned: imgspec.Versioned{
+			SchemaVersion: 2,
+		},
+	}
 
 	// @TODO: Don't pin this to pwd
 	pwd, _ := os.Getwd()
 	fmt.Println(pwd)
 
+	for _, archive := range archives {
+		// assume oci format for now
+		manifest, err := getOciManifest(filepath.Join(pwd, archive))
+		if err != nil {
+			return err
+		}
+		index.Manifests = append(index.Manifests, manifest)
+	}
+	return nil
+}
+
+/**
+func manifestSaveFromDockerArchives(outFile string, archives []string) error {
 	for _, archive := range archives {
 		img, err := getImage(filepath.Join(pwd, archive))
 		if err != nil {
@@ -98,6 +115,38 @@ func getImage(archive string) (*climanifest.Image, error) {
 		}
 	}
 	return &img, nil
+} */
+
+func getOciManifest(archive string) (ociv1.Descriptor, error) {
+	var (
+		ociIndex      ociv1.Index
+		ociDescriptor ociv1.Descriptor
+	)
+	r, err := os.Open(archive)
+	if err != nil {
+		return ociDescriptor, err
+	}
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return ociDescriptor, err
+		}
+		// are we safe to unmarshal into an index?
+		buff := make([]byte, hdr.Size)
+		_, err = tr.Read(buff)
+		if err != nil {
+			return ociDescriptor, err
+		}
+		if err := json.Unmarshal(buff, &ociIndex); err != nil {
+			return ociDescriptor, err
+		}
+		return ociIndex.Manifests[0], nil
+	}
+	return ociDescriptor, nil
 }
 
 func ManifestSaveLocalImages(images []string) error {
