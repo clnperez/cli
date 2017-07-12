@@ -31,7 +31,7 @@ import (
 	"github.com/docker/docker/registry"
 )
 
-type pushOpts struct {
+type pushOptions struct {
 	newRef string
 	file   string
 	purge  bool
@@ -81,7 +81,7 @@ type manifestListPush struct {
 
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
-	opts := pushOpts{}
+	opts := pushOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "push [newRef | --file pre-annotated-yaml] [--purge=false]",
@@ -99,7 +99,7 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 	return cmd
 }
 
-func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error {
+func putManifestList(dockerCli command.Cli, opts pushOptions, args []string) error {
 	var (
 		yamlInput                         YamlInput
 		initialRef                        string

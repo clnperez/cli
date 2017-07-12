@@ -21,7 +21,7 @@ func TestNewInspectCommand(t *testing.T) {
 		{
 			name:		"wrong-args",
 			args:		[]string{},
-			expectedError:	"\"annotate\" requires exactly 1 argument(s).",
+			expectedError:	"\"inspect\" requires exactly 1 argument(s).",
 		},
 	}
 	for _, tc := range testCases {
@@ -34,6 +34,7 @@ func TestNewInspectCommand(t *testing.T) {
 	}
 }
 
+// use testdata and golden for this stuff
 func TestNewInspectCreateSuccess(t *testing.T) {
 	testCases := []struct{
 		name		string
@@ -41,16 +42,17 @@ func TestNewInspectCreateSuccess(t *testing.T) {
 	}{
 		{
 			name:	"simple",
-			args:	[]string{"image"},
+			args:	[]string{"busybox"},
 		},
 		{
-			name:	"manifest"
-			args:	[]string{"trollin/alpine"}
+			name:	"manifest",
+			args:	[]string{"trollin/alpine"},
+		},
 	}
 	for _, tc := range testCases {
 		buf := new(bytes.Buffer)
-		cmd := newAnnotateCommand(test.NewFakeCli(&fakeClient{
-			manifestAnnotateFunc: func(manifestList string, refImage string, opts annotateOptions)(io.ReadCloser, error){
+		cmd := newInspectCommand(test.NewFakeCli(&fakeClient{
+			manifestInspectFunc: func(manifestList string, opts inspectOptions)(io.ReadCloser, error){
 				return ioutil.NopCloser(strings.NewReader("")), nil
 			},
 		}, buf))
