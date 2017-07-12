@@ -1,7 +1,7 @@
 
-FROM    trollin/golang:1.8.3-stretch
+FROM    golang:1.8.3-alpine
 
-RUN     apt-get update && apt-get install -y git make bash coreutils
+RUN     apk add -U git make bash coreutils
 
 RUN     go get github.com/LK4D4/vndr && \
         cp /go/bin/vndr /usr/bin && \
