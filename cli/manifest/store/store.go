@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution/reference"
 )
@@ -33,6 +34,7 @@ func NewStore(root string) Store {
 // Remove a manifest list from local storage
 func (s *fsStore) Remove(listRef reference.Reference) error {
 	path := filepath.Join(s.root, makeFilesafeName(listRef.String()))
+	logrus.Debugf("manifest store: removing %s", path)
 	return os.RemoveAll(path)
 }
 

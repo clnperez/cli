@@ -5,14 +5,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/docker/cli/cli/internal/test"
 	"github.com/docker/cli/cli/manifest/store"
 	"github.com/docker/cli/cli/manifest/types"
 	manifesttypes "github.com/docker/cli/cli/manifest/types"
-	"github.com/docker/cli/internal/test"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
-	"github.com/gotestyourself/gotestyourself/golden"
+	"github.com/docker/docker/pkg/testutil/golden"
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -51,7 +51,7 @@ func fullImageManifest(t *testing.T, ref reference.Named) types.ImageManifest {
 	})
 	require.NoError(t, err)
 	// TODO: include image data for verbose inspect
-	return types.NewImageManifest(ref, digest.Digest("abcd"), types.Image{OS: "linux", Architecture: "amd64"}, man)
+	return types.NewImageManifest(ref, digest.Digest("abcd"), types.Image{}, man)
 }
 
 func TestInspectCommandLocalManifestNotFound(t *testing.T) {
@@ -105,7 +105,7 @@ func TestInspectCommandLocalManifest(t *testing.T) {
 	cmd.SetArgs([]string{"example.com/list:v1", "example.com/alpine:3.0"})
 	require.NoError(t, cmd.Execute())
 	actual := cli.OutBuffer()
-	expected := golden.Get(t, "inspect-manifest.golden")
+	expected := golden.Get(t, actual.Bytes(), "inspect-manifest.golden")
 	assert.Equal(t, string(expected), actual.String())
 }
 
@@ -126,6 +126,6 @@ func TestInspectcommandRemoteManifest(t *testing.T) {
 	cmd.SetArgs([]string{"example.com/alpine:3.0"})
 	require.NoError(t, cmd.Execute())
 	actual := cli.OutBuffer()
-	expected := golden.Get(t, "inspect-manifest.golden")
+	expected := golden.Get(t, actual.Bytes(), "inspect-manifest.golden")
 	assert.Equal(t, string(expected), actual.String())
 }

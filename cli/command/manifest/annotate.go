@@ -1,15 +1,13 @@
 package manifest
 
 import (
-	"fmt"
-
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
-	"github.com/docker/distribution/reference"
-
-	"github.com/Sirupsen/logrus"
+	"github.com/docker/cli/cli/manifest/store"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/net/context"
 )
 
 type annotateOptions struct {
@@ -26,8 +24,8 @@ func newAnnotateCommand(dockerCli command.Cli) *cobra.Command {
 	var opts annotateOptions
 
 	cmd := &cobra.Command{
-		Use:   "annotate NAME[:TAG] [OPTIONS]",
-		Short: "Add additional information to an image's manifest.",
+		Use:   "annotate [OPTIONS] MANIFEST_LIST MANIFEST",
+		Short: "Add additional information to a local image manifest",
 		Args:  cli.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.target = args[0]
@@ -38,78 +36,60 @@ func newAnnotateCommand(dockerCli command.Cli) *cobra.Command {
 
 	flags := cmd.Flags()
 
-	flags.StringVar(&opts.os, "os", "", "Add os info to a manifest before pushing it.")
-	flags.StringVar(&opts.arch, "arch", "", "Add arch info to a manifest before pushing it.")
-	flags.StringSliceVar(&opts.osFeatures, "os-features", []string{}, "Add feature info to a manifest before pushing it.")
-	flags.StringVar(&opts.variant, "variant", "", "Add arch variant to a manifest before pushing it.")
+	flags.StringVar(&opts.os, "os", "", "Set operating system")
+	flags.StringVar(&opts.arch, "arch", "", "Set architecture")
+	flags.StringSliceVar(&opts.osFeatures, "os-features", []string{}, "Set operating system feature")
+	flags.StringVar(&opts.variant, "variant", "", "Set architecture variant")
 
 	return cmd
 }
 
 func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
-
-	// Make sure the manifests are pulled, find the file you need, unmarshal the json, edit the file, and done.
-	targetRef, err := reference.ParseNormalizedNamed(opts.target)
+	targetRef, err := normalizeReference(opts.target)
 	if err != nil {
 		return errors.Wrapf(err, "annotate: Error parsing name for manifest list (%s): %s", opts.target)
 	}
-	imgRef, err := reference.ParseNormalizedNamed(opts.image)
+	imgRef, err := normalizeReference(opts.image)
 	if err != nil {
-		return errors.Wrapf(err, "annotate: Error prasing name for manifest (%s): %s:", opts.image)
+		return errors.Wrapf(err, "annotate: Error parsing name for manifest (%s): %s:", opts.image)
 	}
 
-	// Make sure we've got tags or digests:
-	if _, isDigested := targetRef.(reference.Canonical); !isDigested {
-		targetRef = reference.TagNameOnly(targetRef)
-	}
-	if _, isDigested := imgRef.(reference.Canonical); !isDigested {
-		imgRef = reference.TagNameOnly(imgRef)
-	}
-	transactionID := makeFilesafeName(targetRef.String())
-	imgID := makeFilesafeName(imgRef.String())
-	logrus.Debugf("beginning annotate for %s/%s", transactionID, imgID)
+	logrus.Debugf("beginning annotate for %s/%s", targetRef, imgRef)
 
-	imgInspect, _, err := getImageData(dockerCli, imgRef.String(), targetRef.String(), false)
-	if err != nil {
-		return err
-	}
-
-	if len(imgInspect) > 1 {
-		return fmt.Errorf("cannot annotate manifest list. Please pass an image (not list) name")
-	}
-
-	mf := imgInspect[0]
-
-	newMf, err := localManifestToManifestInspect(imgID, transactionID)
-	if err != nil {
+	ctx := context.Background()
+	manifestStore := dockerCli.ManifestStore()
+	imageManfiest, err := manifestStore.Get(targetRef, imgRef)
+	switch {
+	case store.IsNotFound(err):
+		imageManfiest, err = getManifest(ctx, dockerCli, targetRef, imgRef)
+		if err != nil {
+			return err
+		}
+		if err := manifestStore.Save(targetRef, imgRef, imageManfiest); err != nil {
+			return err
+		}
+	case err != nil:
 		return err
 	}
 
 	// Update the mf
 	if opts.os != "" {
-		newMf.OS = opts.os
+		imageManfiest.Platform.OS = opts.os
 	}
 	if opts.arch != "" {
-		newMf.Architecture = opts.arch
+		imageManfiest.Platform.Architecture = opts.arch
 	}
 	for _, osFeature := range opts.osFeatures {
-		newMf.OSFeatures = appendIfUnique(mf.OSFeatures, osFeature)
+		imageManfiest.Platform.OSFeatures = appendIfUnique(imageManfiest.Platform.OSFeatures, osFeature)
 	}
 	if opts.variant != "" {
-		newMf.Variant = opts.variant
+		imageManfiest.Platform.Variant = opts.variant
 	}
 
-	// validate os/arch input
-	if !isValidOSArch(newMf.OS, newMf.Architecture) {
-		return fmt.Errorf("manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
+	if !isValidOSArch(imageManfiest.Platform.OS, imageManfiest.Platform.Architecture) {
+		return errors.Errorf("manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
 	}
-
-	if err := updateMfFile(newMf, imgID, transactionID); err != nil {
-		return err
-	}
-
-	logrus.Debugf("annotated %s with options %v", mf.RefName, opts)
-	return nil
+	return manifestStore.Save(targetRef, imgRef, imageManfiest)
 }
 
 func appendIfUnique(list []string, str string) []string {

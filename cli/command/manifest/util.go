@@ -1,27 +1,16 @@
 package manifest
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/docker/cli/cli/manifest/fetcher"
-	"github.com/docker/docker/pkg/homedir"
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/manifest/store"
+	"github.com/docker/cli/cli/manifest/types"
+	"github.com/docker/distribution/reference"
+	"golang.org/x/net/context"
 )
 
 type osArch struct {
 	os   string
 	arch string
-}
-
-// dirOpenError
-type dirOpenError struct {
-}
-
-func (e dirOpenError) Error() string {
-	return "cannot perform open on a directory"
 }
 
 // Remove any unsupported os/arch combo
@@ -64,116 +53,27 @@ func isValidOSArch(os string, arch string) bool {
 	return ok
 }
 
-func makeFilesafeName(ref string) string {
-	// Make sure the ref is a normalized name before calling this func
-	fileName := strings.Replace(ref, ":", "-", -1)
-	return strings.Replace(fileName, "/", "_", -1)
-}
-
-func getListFilenames(transaction string) ([]string, error) {
-	baseDir, err := buildBaseFilename()
+func normalizeReference(ref string) (reference.Named, error) {
+	namedRef, err := reference.ParseNormalizedNamed(ref)
 	if err != nil {
 		return nil, err
 	}
-	transactionDir := filepath.Join(baseDir, makeFilesafeName(transaction))
-	fd, err := os.Open(transactionDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+	if _, isDigested := namedRef.(reference.Canonical); !isDigested {
+		return reference.TagNameOnly(namedRef), nil
 	}
-	fileNames, err := fd.Readdirnames(-1)
-	if err != nil {
-		return nil, err
-	}
-	fd.Close()
-	for i, f := range fileNames {
-		fileNames[i] = filepath.Join(transactionDir, f)
-	}
-	return fileNames, nil
+	return namedRef, nil
 }
 
-func getManifestFd(manifest, transaction string) (*os.File, error) {
-
-	fileName, err := mfToFilename(manifest, transaction)
-	if err != nil {
-		return nil, err
+// getManifest from the local store, and fallback to the remote registry if it
+//  doesn't exist locally
+func getManifest(ctx context.Context, dockerCli command.Cli, listRef, namedRef reference.Named) (types.ImageManifest, error) {
+	data, err := dockerCli.ManifestStore().Get(listRef, namedRef)
+	switch {
+	case store.IsNotFound(err):
+		return dockerCli.RegistryClient().GetManifest(ctx, namedRef)
+	case err != nil:
+		return types.ImageManifest{}, err
+	default:
+		return data, nil
 	}
-
-	return getFdGeneric(fileName)
-}
-
-func getFdGeneric(file string) (*os.File, error) {
-	fileinfo, err := os.Stat(file)
-	if err != nil && os.IsNotExist(err) {
-		return nil, nil
-	} else if err != nil {
-		return nil, err
-	}
-	if fileinfo.IsDir() {
-		return nil, dirOpenError{}
-	}
-	fd, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	return fd, nil
-}
-
-func buildBaseFilename() (string, error) {
-	// Get will check for $HOME and if not set, lookup a user in
-	// a static-safe way (without calling os/user.Current())
-	userHome := homedir.Get()
-	return filepath.Join(userHome, ".docker", "manifests"), nil
-}
-
-func mfToFilename(manifest, transaction string) (string, error) {
-
-	baseDir, err := buildBaseFilename()
-	if err != nil {
-		return "", nil
-	}
-	return filepath.Join(baseDir, makeFilesafeName(transaction), makeFilesafeName(manifest)), nil
-}
-
-func localManifestToManifestInspect(manifest, transaction string) (fetcher.ImgManifestInspect, error) {
-
-	var newMI fetcher.ImgManifestInspect
-	filename, err := mfToFilename(manifest, transaction)
-	if err != nil {
-		return newMI, err
-	}
-	buf, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return newMI, err
-	}
-	if err := json.Unmarshal(buf, &newMI); err != nil {
-		return newMI, err
-	}
-	return newMI, nil
-}
-
-func updateMfFile(newMI fetcher.ImgManifestInspect, mfName, transaction string) error {
-	fileName, err := mfToFilename(mfName, transaction)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(fileName); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	fd, err := os.Create(fileName)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-	theBytes, err := json.Marshal(newMI)
-	if err != nil {
-		return err
-	}
-
-	if _, err := fd.Write(theBytes); err != nil {
-		return err
-	}
-	return nil
 }

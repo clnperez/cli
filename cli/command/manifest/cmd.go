@@ -10,12 +10,11 @@ import (
 )
 
 // NewManifestCommand returns a cobra command for `manifest` subcommands
-// nolint: interfacer
-func NewManifestCommand(dockerCli *command.DockerCli) *cobra.Command {
+func NewManifestCommand(dockerCli command.Cli) *cobra.Command {
 	// use dockerCli as command.Cli
 	cmd := &cobra.Command{
 		Use:   "manifest COMMAND",
-		Short: "Manage Docker image manifests and lists",
+		Short: "Manage Docker image manifests and manifest lists",
 		Long:  manifestDescription,
 		Args:  cli.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -32,8 +31,8 @@ func NewManifestCommand(dockerCli *command.DockerCli) *cobra.Command {
 }
 
 var manifestDescription = `
-The **docker manifest** command has subcommands for managing image manifests and 
-manifest lists. A manifest list allows you to use one name to refer to the same image 
+The **docker manifest** command has subcommands for managing image manifests and
+manifest lists. A manifest list allows you to use one name to refer to the same image
 built for multiple architectures.
 
 To see help for a subcommand, use:

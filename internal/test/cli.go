@@ -11,7 +11,6 @@ import (
 	"github.com/docker/cli/cli/config/configfile"
 	manifeststore "github.com/docker/cli/cli/manifest/store"
 	registryclient "github.com/docker/cli/cli/registry/client"
-	"github.com/docker/cli/cli/trust"
 	"github.com/docker/docker/client"
 	notaryclient "github.com/theupdateframework/notary/client"
 )
@@ -21,16 +20,15 @@ type notaryClientFuncType func(imgRefAndAuth trust.ImageRefAndAuth, actions []st
 // FakeCli emulates the default DockerCli
 type FakeCli struct {
 	command.DockerCli
-	client           client.APIClient
-	configfile       *configfile.ConfigFile
-	out              *command.OutStream
-	outBuffer        *bytes.Buffer
-	err              *bytes.Buffer
-	in               *command.InStream
-	server           command.ServerInfo
-	notaryClientFunc notaryClientFuncType
-	manifestStore    manifeststore.Store
-	registryClient   registryclient.RegistryClient
+	client         client.APIClient
+	configfile     *configfile.ConfigFile
+	out            *command.OutStream
+	outBuffer      *bytes.Buffer
+	err            *bytes.Buffer
+	in             *command.InStream
+	server         command.ServerInfo
+	manifestStore  manifeststore.Store
+	registryClient registryclient.RegistryClient
 }
 
 // NewFakeCli returns a fake for the command.Cli interface
@@ -102,26 +100,13 @@ func (c *FakeCli) ErrBuffer() *bytes.Buffer {
 	return c.err
 }
 
-// SetNotaryClient sets the internal getter for retrieving a NotaryClient
-func (c *FakeCli) SetNotaryClient(notaryClientFunc notaryClientFuncType) {
-	c.notaryClientFunc = notaryClientFunc
-}
-
-// NotaryClient returns an err for testing unless defined
-func (c *FakeCli) NotaryClient(imgRefAndAuth trust.ImageRefAndAuth, actions []string) (notaryclient.Repository, error) {
-	if c.notaryClientFunc != nil {
-		return c.notaryClientFunc(imgRefAndAuth, actions)
-	}
-	return nil, fmt.Errorf("no notary client available unless defined")
-}
-
 // ManifestStore returns a fake store used for testing
 func (c *FakeCli) ManifestStore() manifeststore.Store {
 	return c.manifestStore
 }
 
 // RegistryClient returns a fake client for testing
-func (c *FakeCli) RegistryClient(insecure bool) registryclient.RegistryClient {
+func (c *FakeCli) RegistryClient() registryclient.RegistryClient {
 	return c.registryClient
 }
 

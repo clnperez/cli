@@ -1,15 +1,13 @@
 package client
 
 import (
-	"fmt"
 	"net/http"
 
+	"github.com/Sirupsen/logrus"
 	manifesttypes "github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/reference"
 	distributionclient "github.com/docker/distribution/registry/client"
-	"github.com/sirupsen/logrus"
-	//"github.com/docker/distribution/registry/storage"
 	"github.com/docker/docker/api/types"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/opencontainers/go-digest"
@@ -27,10 +25,9 @@ type RegistryClient interface {
 }
 
 // NewRegistryClient returns a new RegistryClient with a resolver
-func NewRegistryClient(resolver AuthConfigResolver, userAgent string, insecure bool) RegistryClient {
+func NewRegistryClient(resolver AuthConfigResolver, userAgent string) RegistryClient {
 	return &client{
 		authConfigResolver: resolver,
-		insecureRegistry:   insecure,
 		userAgent:          userAgent,
 	}
 }
@@ -46,26 +43,14 @@ type PutManifestOptions struct {
 
 type client struct {
 	authConfigResolver AuthConfigResolver
-	insecureRegistry   bool
 	userAgent          string
-}
-
-// ErrBlobCreated returned when a blob mount request was created
-type ErrBlobCreated struct {
-	From   reference.Named
-	Target reference.Named
-}
-
-func (err ErrBlobCreated) Error() string {
-	return fmt.Sprintf("blob mounted from: %v to: %v",
-		err.From, err.Target)
 }
 
 var _ RegistryClient = &client{}
 
 // MountBlob into the registry, so it can be referenced by a manifest
 func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, targetRef reference.Named) error {
-	repoEndpoint, err := newDefaultRepositoryEndpoint(targetRef, c.insecureRegistry)
+	repoEndpoint, err := newDefaultRepositoryEndpoint(targetRef)
 	if err != nil {
 		return err
 	}
@@ -82,14 +67,14 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 	default:
 		return errors.Wrapf(err, "failed to mount blob %s to %s", sourceRef, targetRef)
 	}
+
 	lu.Cancel(ctx)
-	logrus.Debugf("mount of blob %s created", sourceRef)
-	return ErrBlobCreated{From: sourceRef, Target: targetRef}
+	return errors.Errorf("failed to mount blob %s to %s", sourceRef, targetRef)
 }
 
 // PutManifestList sends the manifest to a registry and returns the new digest
 func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest) (digest.Digest, error) {
-	repoEndpoint, err := newDefaultRepositoryEndpoint(ref, c.insecureRegistry)
+	repoEndpoint, err := newDefaultRepositoryEndpoint(ref)
 	if err != nil {
 		return digest.Digest(""), err
 	}
@@ -108,7 +93,6 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 	if err != nil {
 		return digest.Digest(""), err
 	}
-
 	dgst, err := manifestService.Put(ctx, manifest, opts...)
 	return dgst, errors.Wrapf(err, "failed to put manifest %s", ref)
 }

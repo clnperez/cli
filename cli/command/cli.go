@@ -16,7 +16,6 @@ import (
 	cliflags "github.com/docker/cli/cli/flags"
 	manifeststore "github.com/docker/cli/cli/manifest/store"
 	registryclient "github.com/docker/cli/cli/registry/client"
-	"github.com/docker/cli/cli/trust"
 	dopts "github.com/docker/cli/opts"
 	"github.com/docker/docker/api"
 	"github.com/docker/docker/api/types"
@@ -48,9 +47,8 @@ type Cli interface {
 	SetIn(in *InStream)
 	ConfigFile() *configfile.ConfigFile
 	ServerInfo() ServerInfo
-	NotaryClient(imgRefAndAuth trust.ImageRefAndAuth, actions []string) (notaryclient.Repository, error)
 	ManifestStore() manifeststore.Store
-	RegistryClient(bool) registryclient.RegistryClient
+	RegistryClient() registryclient.RegistryClient
 }
 
 // DockerCli is an instance the docker command line client.
@@ -123,11 +121,11 @@ func (cli *DockerCli) ManifestStore() manifeststore.Store {
 
 // RegistryClient returns a client for communicating with a Docker distribution
 // registry
-func (cli *DockerCli) RegistryClient(allowInsecure bool) registryclient.RegistryClient {
+func (cli *DockerCli) RegistryClient() registryclient.RegistryClient {
 	resolver := func(ctx context.Context, index *registrytypes.IndexInfo) types.AuthConfig {
 		return ResolveAuthConfig(ctx, cli, index)
 	}
-	return registryclient.NewRegistryClient(resolver, UserAgent(), allowInsecure)
+	return registryclient.NewRegistryClient(resolver, UserAgent())
 }
 
 // Initialize the dockerCli runs initialization that must happen after command
