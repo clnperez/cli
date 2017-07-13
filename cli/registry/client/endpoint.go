@@ -34,7 +34,7 @@ func (r repositoryEndpoint) BaseURL() string {
 	return r.endpoint.URL.String()
 }
 
-func newDefaultRepositoryEndpoint(ref reference.Named, insecure bool) (repositoryEndpoint, error) {
+func newDefaultRepositoryEndpoint(ref reference.Named) (repositoryEndpoint, error) {
 	repoInfo, err := registry.ParseRepositoryInfo(ref)
 	if err != nil {
 		return repositoryEndpoint{}, err
@@ -43,16 +43,15 @@ func newDefaultRepositoryEndpoint(ref reference.Named, insecure bool) (repositor
 	if err != nil {
 		return repositoryEndpoint{}, err
 	}
-	if insecure {
-		endpoint.TLSConfig.InsecureSkipVerify = true
-	}
 	return repositoryEndpoint{info: repoInfo, endpoint: endpoint}, nil
 }
 
 func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo) (registry.APIEndpoint, error) {
-	var err error
-
 	options := registry.ServiceOptions{}
+	// TODO: get list of InsecureRegistries from somewhere. Either from the engine
+	// or maybe add it to the client config (but that would dupliate the list)
+	// options.InsecureRegistries = ...?
+
 	registryService := registry.NewService(options)
 	endpoints, err := registryService.LookupPushEndpoints(reference.Domain(repoInfo.Name))
 	if err != nil {
@@ -108,8 +107,7 @@ func getHTTPTransport(authConfig authtypes.AuthConfig, endpoint registry.APIEndp
 
 // RepoNameForReference returns the repository name from a reference
 func RepoNameForReference(ref reference.Named) (string, error) {
-	// insecure is fine since this only returns the name
-	repo, err := newDefaultRepositoryEndpoint(ref, false)
+	repo, err := newDefaultRepositoryEndpoint(ref)
 	if err != nil {
 		return "", err
 	}

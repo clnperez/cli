@@ -9,6 +9,7 @@ import (
 
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
+	"github.com/docker/cli/cli/trust"
 	manifeststore "github.com/docker/cli/cli/manifest/store"
 	registryclient "github.com/docker/cli/cli/registry/client"
 	"github.com/docker/docker/client"
@@ -27,6 +28,7 @@ type FakeCli struct {
 	err            *bytes.Buffer
 	in             *command.InStream
 	server         command.ServerInfo
+	notaryClientFunc notaryClientFuncType
 	manifestStore  manifeststore.Store
 	registryClient registryclient.RegistryClient
 }
@@ -105,8 +107,20 @@ func (c *FakeCli) ManifestStore() manifeststore.Store {
 	return c.manifestStore
 }
 
+// NotaryClient returns an err for testing unless defined
+func (c *FakeCli) NotaryClient(imgRefAndAuth trust.ImageRefAndAuth, actions []string) (notaryclient.Repository, error) {
+	if c.notaryClientFunc != nil {
+		return c.notaryClientFunc(imgRefAndAuth, actions)
+	}
+	return nil, fmt.Errorf("no notary client available unless defined")
+
+// ManifestStore returns a fake store used for testing
+func (c *FakeCli) ManifestStore() manifeststore.Store {
+	return c.manifestStore
+}
+
 // RegistryClient returns a fake client for testing
-func (c *FakeCli) RegistryClient(insecure bool) registryclient.RegistryClient {
+func (c *FakeCli) RegistryClient() registryclient.RegistryClient {
 	return c.registryClient
 }
 
