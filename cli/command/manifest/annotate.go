@@ -69,7 +69,7 @@ func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 	imgID := makeFilesafeName(imgRef.String())
 	logrus.Debugf("beginning annotate for %s/%s", transactionID, imgID)
 
-	imgInspect, _, err := getImageData(dockerCli, imgRef.String(), targetRef.String(), false)
+	imgInspect, _, err := getImageData(dockerCli, imgRef, targetRef.String(), false)
 	if err != nil {
 		return err
 	}

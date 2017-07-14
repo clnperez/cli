@@ -202,7 +202,8 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
-	tr, err := fetcher.GetDistClientTransport(ctx, dockerCli, listPush.targetRepoInfo, listPush.targetEndpoint, listPush.targetName)
+	authConfig := command.ResolveAuthConfig(ctx, dockerCli, listPush.targetRepoInfo.Index)
+	tr, err := fetcher.GetDistClientTransport(authConfig, listPush.targetEndpoint, listPush.targetName)
 	if err != nil {
 		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
@@ -300,7 +301,12 @@ func listFromYAML(dockerCli command.Cli, targetRef reference.Named, targetRepoIn
 		listPush          manifestListPush
 	)
 	for _, mfEntry := range yamlInput.Manifests {
-		mfstInspects, repoInfo, err := getImageData(dockerCli, mfEntry.Image, targetRef.Name(), true)
+		namedRef, err := reference.ParseNormalizedNamed(mfEntry.Image)
+		if err != nil {
+			// TODO: wrap error?
+			return listPush, err
+		}
+		mfstInspects, repoInfo, err := getImageData(dockerCli, namedRef, targetRef.Name(), true)
 		if err != nil {
 			return listPush, err
 		}

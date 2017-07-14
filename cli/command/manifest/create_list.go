@@ -65,8 +65,13 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 	manifests := args[1:]
 	logrus.Debugf("retrieving digests of images...")
 	for _, manifestRef := range manifests {
+		namedRef, err := reference.ParseNormalizedNamed(manifestRef)
+		if err != nil {
+			// TODO: wrap error?
+			return err
+		}
 
-		mfstData, _, err := getImageData(dockerCli, manifestRef, targetRef.String(), false)
+		mfstData, _, err := getImageData(dockerCli, namedRef, targetRef.String(), false)
 		if err != nil {
 			return err
 		}

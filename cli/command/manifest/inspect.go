@@ -58,7 +58,7 @@ func runListInspect(dockerCli command.Cli, opts inspectOptions) error {
 		return err
 	}
 
-	if imgInspect, _, err = getImageData(dockerCli, named.String(), "", true); err != nil {
+	if imgInspect, _, err = getImageData(dockerCli, named, "", true); err != nil {
 		return err
 	}
 	// output basic informative details about the image
