@@ -5,13 +5,16 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/docker/cli/cli"
+	"github.com/docker/cli/cli/config"
 	cliconfig "github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/config/credentials"
 	cliflags "github.com/docker/cli/cli/flags"
+	manifeststore "github.com/docker/cli/cli/manifest/store"
 	dopts "github.com/docker/cli/opts"
 	"github.com/docker/docker/api"
 	"github.com/docker/docker/api/types"
@@ -40,6 +43,7 @@ type Cli interface {
 	SetIn(in *InStream)
 	ConfigFile() *configfile.ConfigFile
 	CredentialsStore(serverAddress string) credentials.Store
+	ManifestStore() manifeststore.Store
 }
 
 // DockerCli is an instance the docker command line client.
@@ -139,6 +143,12 @@ func (cli *DockerCli) CredentialsStore(serverAddress string) credentials.Store {
 		return credentials.NewNativeStore(cli.configFile, helper)
 	}
 	return credentials.NewFileStore(cli.configFile)
+}
+
+// ManifestStore returns a store for local manifests
+func (cli *DockerCli) ManifestStore() manifeststore.Store {
+	// TODO: support override default location from config file
+	return manifeststore.NewStore(filepath.Join(config.Dir(), "manifests"))
 }
 
 // getConfiguredCredentialStore returns the credential helper configured for the

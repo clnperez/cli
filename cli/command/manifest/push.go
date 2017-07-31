@@ -28,6 +28,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/manifest/fetcher"
+	"github.com/docker/cli/cli/manifest/store"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/registry"
 )
@@ -81,7 +82,6 @@ type manifestListPush struct {
 }
 
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
-
 	opts := pushOpts{}
 
 	cmd := &cobra.Command{
@@ -102,11 +102,10 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error {
 	var (
-		yamlInput                         YamlInput
-		initialRef                        string
-		listPush                          manifestListPush
-		fullTargetRef, targetRef, bareRef reference.Named
-		err                               error
+		yamlInput  YamlInput
+		initialRef string
+		listPush   manifestListPush
+		err        error
 	)
 
 	if opts.file != "" {
@@ -119,7 +118,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		initialRef = args[0]
 	}
 
-	fullTargetRef, targetRef, bareRef, err = constructTargetRefs(initialRef)
+	fullTargetRef, targetRef, bareRef, err := constructTargetRefs(initialRef)
 	if err != nil {
 		return err
 	}
@@ -141,7 +140,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 	// for the constituent images:
 	logrus.Debugf("retrieving digests of images...")
 	if opts.file == "" {
-		listPush, err = listFromTransaction(targetRepoInfo, targetRepoName, fullTargetRef.String())
+		listPush, err = listFromTransaction(dockerCli.ManifestStore(), targetRepoInfo, targetRepoName, fullTargetRef)
 	} else {
 		listPush, err = listFromYAML(dockerCli, fullTargetRef, targetRepoInfo, targetRepoName, yamlInput)
 	}
@@ -159,12 +158,7 @@ func putManifestList(dockerCli command.Cli, opts pushOpts, args []string) error 
 		return err
 	}
 	if opts.purge {
-		targetFilename, _ := mfToFilename(fullTargetRef.String(), "")
-		logrus.Debugf("deleting files at %s", targetFilename)
-		if err := os.RemoveAll(targetFilename); err != nil {
-			// Not a fatal error
-			logrus.Info("unable to clean up manifest files in %s", targetFilename)
-		}
+		return dockerCli.ManifestStore().Remove(fullTargetRef)
 	}
 	return nil
 }
@@ -202,7 +196,8 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 	}
 	putRequest.Header.Set("Content-Type", mediaType)
 
-	tr, err := fetcher.GetDistClientTransport(ctx, dockerCli, listPush.targetRepoInfo, listPush.targetEndpoint, listPush.targetName)
+	authConfig := command.ResolveAuthConfig(ctx, dockerCli, listPush.targetRepoInfo.Index)
+	tr, err := fetcher.GetDistClientTransport(authConfig, listPush.targetEndpoint, listPush.targetName)
 	if err != nil {
 		return errors.Wrap(err, "failed to setup HTTP client to repository")
 	}
@@ -241,16 +236,15 @@ func doListPush(ctx context.Context, dockerCli command.Cli, listPush manifestLis
 	return fmt.Errorf("registry push unsuccessful: response %d: %s", resp.StatusCode, resp.Status)
 }
 
-func listFromTransaction(targetRepoInfo *registry.RepositoryInfo, targetRepoName, targetRef string) (manifestListPush, error) {
+func listFromTransaction(manifestStore store.Store, targetRepoInfo *registry.RepositoryInfo, targetRepoName string, targetRef reference.Reference) (manifestListPush, error) {
 	var (
 		manifestList      manifestlist.ManifestList
 		blobMountRequests []blobMount
 		manifestRequests  []manifestPush
 		listPush          manifestListPush
-		manifests         []string
-		err               error
 	)
-	if manifests, err = getListFilenames(targetRef); err != nil {
+	manifests, err := manifestStore.GetList(targetRef)
+	if err != nil {
 		return listPush, err
 	}
 	// @TODO: Is this possible, or will manifests just be nil??
@@ -258,17 +252,10 @@ func listFromTransaction(targetRepoInfo *registry.RepositoryInfo, targetRepoName
 		return listPush, fmt.Errorf("%s not found", targetRef)
 	}
 	// manifests is a list of file paths
-	for _, manifestFile := range manifests {
-		fileParts := strings.Split(manifestFile, string(filepath.Separator))
-		numParts := len(fileParts)
-		mfstInspect, err := localManifestToManifestInspect(fileParts[numParts-1], fileParts[numParts-2])
-		if err != nil {
-			return listPush, err
-		}
+	for _, mfstInspect := range manifests {
 		if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
 			return listPush, fmt.Errorf("malformed manifest object. cannot push to registry")
 		}
-		// @TODO: Why am I getting another repoInfo here?
 		manifest, repoInfo, err := buildManifestObj(targetRepoInfo, mfstInspect)
 		if err != nil {
 			return listPush, err
@@ -299,15 +286,19 @@ func listFromYAML(dockerCli command.Cli, targetRef reference.Named, targetRepoIn
 		manifestRequests  []manifestPush
 		listPush          manifestListPush
 	)
+
+	ctx := context.Background()
 	for _, mfEntry := range yamlInput.Manifests {
-		mfstInspects, repoInfo, err := getImageData(dockerCli, mfEntry.Image, targetRef.Name(), true)
+		namedRef, err := normalizeReference(mfEntry.Image)
+		if err != nil {
+			// TODO: wrap error?
+			return listPush, err
+		}
+
+		mfstInspect, err := getManifest(ctx, dockerCli, targetRef, namedRef)
 		if err != nil {
 			return listPush, err
 		}
-		if len(mfstInspects) == 0 {
-			return listPush, fmt.Errorf("manifest %s not found", mfEntry.Image)
-		}
-		mfstInspect := mfstInspects[0]
 		if mfstInspect.Architecture == "" || mfstInspect.OS == "" {
 			return listPush, fmt.Errorf("malformed manifest object. cannot push to registry")
 		}
@@ -341,13 +332,11 @@ func constructTargetRefs(initialRef string) (reference.Named, reference.Named, r
 		err               error
 	)
 
-	fullTargetRef, err = reference.ParseNormalizedNamed(initialRef)
+	fullTargetRef, err = normalizeReference(initialRef)
 	if err != nil {
 		return nil, nil, nil, errors.Wrapf(err, "error parsing name for manifest list (%s): %v")
 	}
-	if _, isDigested := fullTargetRef.(reference.Canonical); !isDigested {
-		fullTargetRef = reference.TagNameOnly(fullTargetRef)
-	}
+
 	tagIndex := strings.LastIndex(fullTargetRef.String(), ":")
 	logrus.Debugf("fullTargetRef. should be complete by now: %s", fullTargetRef.String())
 	if tagIndex < 0 {
@@ -384,7 +373,6 @@ func getYamlInput(yamlFile string) (YamlInput, error) {
 }
 
 func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect fetcher.ImgManifestInspect) (manifestlist.ManifestDescriptor, *registry.RepositoryInfo, error) {
-
 	manifestRef, err := reference.ParseNormalizedNamed(mfInspect.RefName)
 	if err != nil {
 		return manifestlist.ManifestDescriptor{}, nil, err
@@ -423,7 +411,6 @@ func buildManifestObj(targetRepo *registry.RepositoryInfo, mfInspect fetcher.Img
 }
 
 func buildBlobMountRequestLists(mfstInspect fetcher.ImgManifestInspect, targetRepoName, mfRepoName reference.Named) ([]blobMount, []manifestPush) {
-
 	var (
 		blobMountRequests []blobMount
 		manifestRequests  []manifestPush
@@ -446,7 +433,6 @@ func buildBlobMountRequestLists(mfstInspect fetcher.ImgManifestInspect, targetRe
 }
 
 func createManifestURLFromRef(targetRef reference.Named, urlBuilder *v2.URLBuilder) (string, error) {
-
 	manifestURL, err := urlBuilder.BuildManifestURL(targetRef)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to build manifest URL from target reference")

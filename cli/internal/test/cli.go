@@ -8,6 +8,7 @@ import (
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/config/credentials"
+	manifeststore "github.com/docker/cli/cli/manifest/store"
 	"github.com/docker/docker/client"
 )
 
@@ -78,4 +79,10 @@ func (c *FakeCli) CredentialsStore(serverAddress string) credentials.Store {
 		c.store = NewFakeStore()
 	}
 	return c.store
+}
+
+// ManifestStore returns a fake store used for testing
+func (c *FakeCli) ManifestStore() manifeststore.Store {
+	// TODO: use a fake store when a test requires it
+	return nil
 }

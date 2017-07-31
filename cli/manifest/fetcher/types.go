@@ -114,25 +114,14 @@ type Image struct {
 	History    []History     `json:"history,omitempty"`
 	OSVersion  string        `json:"os.version,omitempty"`
 	OSFeatures []string      `json:"os.features,omitempty"`
-
-	// rawJSON caches the immutable JSON associated with this image.
-	rawJSON []byte
-
-	// computedID is the ID computed from the hash of the image config.
-	// Not to be confused with the legacy V1 ID in V1Image.
-	computedID digest.Digest // nolint: unused
 }
 
 // NewImageFromJSON creates an Image configuration from json.
 func NewImageFromJSON(src []byte) (*Image, error) {
 	img := &Image{}
-
 	if err := json.Unmarshal(src, img); err != nil {
 		return nil, err
 	}
-
-	img.rawJSON = src
-
 	return img, nil
 }
 

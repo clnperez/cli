@@ -7,12 +7,7 @@ import (
 	"runtime"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
-
-	"github.com/docker/cli/cli/command"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/manifest/schema2"
@@ -26,16 +21,9 @@ import (
 	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
+	"github.com/pkg/errors"
+	"golang.org/x/net/context"
 )
-
-// ManifestFetcher is to retrieve manifest and image info for an image or manifest list
-type ManifestFetcher struct {
-	endpoint   registry.APIEndpoint
-	repoInfo   *registry.RepositoryInfo
-	repo       distribution.Repository
-	authConfig types.AuthConfig
-	service    registry.Service
-}
 
 type manifestInfo struct {
 	blobDigests []digest.Digest
@@ -46,143 +34,138 @@ type manifestInfo struct {
 	jsonBytes   []byte
 }
 
-type manifestListInspect struct {
-	imageInfos []*Image
-	mfInfos    []manifestInfo
-	mediaTypes []string
+type manifestInfoAndImage struct {
+	image        *Image
+	manfiestInfo manifestInfo
 }
 
-// NewManifestFetcher builds a ManifestFetcher for use with a specific registry
-func NewManifestFetcher(endpoint registry.APIEndpoint, repoInfo *registry.RepositoryInfo, authConfig types.AuthConfig, registryService registry.Service) (ManifestFetcher, error) {
-	switch endpoint.Version {
-	case registry.APIVersion2:
-		return ManifestFetcher{
-			endpoint: endpoint, authConfig: authConfig,
-			service:  registryService,
-			repoInfo: repoInfo,
-		}, nil
-	case registry.APIVersion1:
-		return ManifestFetcher{}, fmt.Errorf("v1 registries are no longer supported")
-	}
-	return ManifestFetcher{}, fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
+// FetchOptions are the options required to fetch a image data from a registry
+type FetchOptions struct {
+	AuthConfig types.AuthConfig
+	RepoInfo   *registry.RepositoryInfo
+	Endpoint   registry.APIEndpoint
+	NamedRef   reference.Named
 }
 
-// Fetch gets the summarized information for an image or manifest list
-func (mf *ManifestFetcher) Fetch(ctx context.Context, dockerCli command.Cli, ref reference.Named) ([]ImgManifestInspect, error) {
-	// Pre-condition: ref has to be tagged (e.g. using ParseNormalizedNamed)
-	var err error
-
-	mf.repo, err = newV2Repository(ctx, dockerCli, mf.repoInfo, mf.endpoint)
+// FetchManifest pulls a manifest from a registry and returns it. An error
+// is returned if no manifest is found matching namedRef.
+func FetchManifest(ctx context.Context, opts FetchOptions) (ImgManifestInspect, error) {
+	repo, err := opts.getRepository(ctx)
 	if err != nil {
-		logrus.Debugf("Error getting v2 registry: %v", err)
-		return nil, err
+		logrus.Debugf("error getting v2 registry: %v", err)
+		return ImgManifestInspect{}, err
 	}
 
-	images, err := mf.fetchWithRepository(ctx, ref)
+	manifest, tagOrDigest, err := getManifest(ctx, repo, opts.NamedRef)
 	if err != nil {
-		if continueOnError(err) {
-			return nil, RecoverableError{original: err}
-		}
-		return nil, err
+		return ImgManifestInspect{}, handleRecoverableError(err)
 	}
-	for _, img := range images {
-		img.MediaType = schema2.MediaTypeManifest
-	}
-	return images, err
-}
 
-func (mf *ManifestFetcher) fetchWithRepository(ctx context.Context, ref reference.Named) ([]ImgManifestInspect, error) {
-	var (
-		manifest    distribution.Manifest
-		tagOrDigest string // Used for logging/progress only
-		tagList     []string
-		imageList   []ImgManifestInspect
-	)
-
-	manSvc, err := mf.repo.Manifests(ctx)
+	tagList, err := repo.Tags(ctx).All(ctx)
 	if err != nil {
-		return nil, err
+		return ImgManifestInspect{}, handleRecoverableError(err)
 	}
-
-	if tagged, isTagged := ref.(reference.NamedTagged); isTagged {
-		manifest, err = manSvc.Get(ctx, "", distribution.WithTag(tagged.Tag()))
-		if err != nil {
-			return nil, err
-		}
-		tagOrDigest = tagged.Tag()
-	} else if digested, isDigested := ref.(reference.Canonical); isDigested {
-		manifest, err = manSvc.Get(ctx, digested.Digest())
-		if err != nil {
-			return nil, err
-		}
-		tagOrDigest = digested.Digest().String()
-	} else {
-		return nil, fmt.Errorf("internal error: reference has neither a tag nor a digest: %s", ref.String())
-	}
-
-	if manifest == nil {
-		return nil, fmt.Errorf("image manifest does not exist for tag or digest %q", tagOrDigest)
-	}
-
-	tagList, err = mf.repo.Tags(ctx).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var (
-		images    []*Image
-		mfInfos   []manifestInfo
-		mediaType []string
-	)
 
 	switch v := manifest.(type) {
 	// Removed Schema 1 support
 	case *schema2.DeserializedManifest:
-		image, mfInfo, err := mf.pullSchema2(ctx, ref, *v)
-		images = append(images, image)
-		mfInfos = append(mfInfos, mfInfo)
-		mediaType = append(mediaType, schema2.MediaTypeManifest)
+		image, mfInfo, err := pullManifestSchemaV2(ctx, opts.NamedRef, repo, *v)
 		if err != nil {
-			return nil, err
+			return ImgManifestInspect{}, handleRecoverableError(err)
 		}
-	case *manifestlist.DeserializedManifestList:
-		listInspect, err := mf.pullManifestList(ctx, ref, *v)
-		if err != nil {
-			return nil, err
-		}
-		images = listInspect.imageInfos
-		mfInfos = listInspect.mfInfos
-		mediaType = listInspect.mediaTypes
-	default:
-		return nil, fmt.Errorf("unsupported manifest format: %v", v)
+		return makeImgManifestInspect(
+			opts.NamedRef.String(), image, tagOrDigest, mfInfo, tagList), nil
 	}
-
-	for idx, img := range images {
-		imgReturn := makeImgManifestInspect(ref.String(), img, tagOrDigest, mfInfos[idx], mediaType[idx], tagList)
-		imageList = append(imageList, *imgReturn)
-	}
-	return imageList, nil
+	return ImgManifestInspect{}, errors.Errorf("object at %s is not a manifest", opts.NamedRef)
 }
 
-func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
-	var (
-		img *Image
-	)
+// Fetch pulls a manifest or manifest list and return it
+// TODO: remove duplication with FetchManifest
+func Fetch(ctx context.Context, opts FetchOptions) ([]ImgManifestInspect, error) {
+	repo, err := opts.getRepository(ctx)
+	if err != nil {
+		logrus.Debugf("error getting v2 registry: %v", err)
+		return nil, err
+	}
 
+	manifest, tagOrDigest, err := getManifest(ctx, repo, opts.NamedRef)
+	if err != nil {
+		return nil, handleRecoverableError(err)
+	}
+
+	tagList, err := repo.Tags(ctx).All(ctx)
+	if err != nil {
+		return nil, handleRecoverableError(err)
+	}
+
+	switch v := manifest.(type) {
+	// Removed Schema 1 support
+	case *schema2.DeserializedManifest:
+		image, mfInfo, err := pullManifestSchemaV2(ctx, opts.NamedRef, repo, *v)
+		if err != nil {
+			return nil, handleRecoverableError(err)
+		}
+		return []ImgManifestInspect{makeImgManifestInspect(
+			opts.NamedRef.String(), image, tagOrDigest, mfInfo, tagList)}, nil
+	case *manifestlist.DeserializedManifestList:
+		infos, err := pullManifestList(ctx, opts.NamedRef, repo, *v)
+		if err != nil {
+			return nil, err
+		}
+		var imgManifests []ImgManifestInspect
+
+		for _, info := range infos {
+			imgManifest := makeImgManifestInspect(
+				opts.NamedRef.String(), info.image, tagOrDigest, info.manfiestInfo, tagList)
+			imgManifests = append(imgManifests, imgManifest)
+		}
+		return imgManifests, nil
+	default:
+		return nil, errors.Errorf("unsupported manifest format: %v", v)
+	}
+}
+
+func handleRecoverableError(err error) error {
+	if continueOnError(err) {
+		return RecoverableError{original: err}
+	}
+	return err
+}
+
+// getManifest returns the manifest from a reference. Also returns the digest or
+// tag of the reference.
+func getManifest(ctx context.Context, repo distribution.Repository, ref reference.Named) (distribution.Manifest, string, error) {
+	manSvc, err := repo.Manifests(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if tagged, isTagged := ref.(reference.NamedTagged); isTagged {
+		tag := tagged.Tag()
+		manifest, err := manSvc.Get(ctx, "", distribution.WithTag(tag))
+		return manifest, tag, err
+	}
+	if digested, isDigested := ref.(reference.Canonical); isDigested {
+		manifest, err := manSvc.Get(ctx, digested.Digest())
+		return manifest, digested.Digest().String(), err
+	}
+
+	return nil, "", errors.Errorf("image manifest for %q does not exist", ref)
+}
+
+func pullManifestSchemaV2(ctx context.Context, ref reference.Named, repo distribution.Repository, mfst schema2.DeserializedManifest) (*Image, manifestInfo, error) {
 	mfDigest, err := schema2ManifestDigest(ref, mfst)
 	if err != nil {
 		return nil, manifestInfo{}, err
 	}
-	mfInfo := manifestInfo{
-		digest: mfDigest}
+	mfInfo := manifestInfo{digest: mfDigest}
 
-	// Pull the image config
-	configJSON, err := mf.pullSchema2ImageConfig(ctx, mfst.Target().Digest)
+	configJSON, err := pullManifestSchemaV2ImageConfig(ctx, mfst.Target().Digest, repo)
 	if err != nil {
 		return nil, mfInfo, err
 	}
 
-	img, err = NewImageFromJSON(configJSON)
+	img, err := NewImageFromJSON(configJSON)
 	if err != nil {
 		return nil, mfInfo, err
 	}
@@ -216,14 +199,13 @@ func (mf *ManifestFetcher) pullSchema2(ctx context.Context, ref reference.Named,
 	return img, mfInfo, nil
 }
 
-func (mf *ManifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst digest.Digest) ([]byte, error) {
-	blobs := mf.repo.Blobs(ctx)
+func pullManifestSchemaV2ImageConfig(ctx context.Context, dgst digest.Digest, repo distribution.Repository) ([]byte, error) {
+	blobs := repo.Blobs(ctx)
 	configJSON, err := blobs.Get(ctx, dgst)
 	if err != nil {
 		return nil, err
 	}
 
-	// Verify image config digest
 	verifier := dgst.Verifier()
 	if err != nil {
 		return nil, err
@@ -232,10 +214,8 @@ func (mf *ManifestFetcher) pullSchema2ImageConfig(ctx context.Context, dgst dige
 		return nil, err
 	}
 	if !verifier.Verified() {
-		err := fmt.Errorf("image config verification failed for digest %s", dgst)
-		return nil, err
+		return nil, errors.Errorf("image config verification failed for digest %s", dgst)
 	}
-
 	return configJSON, nil
 }
 
@@ -267,15 +247,9 @@ func schema2ManifestDigest(ref reference.Named, mfst distribution.Manifest) (dig
 }
 
 // pullManifestList handles "manifest lists" which point to various
-// platform-specifc manifests.
-func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.Named, mfstList manifestlist.DeserializedManifestList) (*manifestListInspect, error) {
-	var (
-		imageList = []*Image{}
-		mfInfos   = []manifestInfo{}
-		mediaType = []string{}
-		v         *schema2.DeserializedManifest
-		ok        bool
-	)
+// platform-specific manifests.
+func pullManifestList(ctx context.Context, ref reference.Named, repo distribution.Repository, mfstList manifestlist.DeserializedManifestList) ([]manifestInfoAndImage, error) {
+	infos := []manifestInfoAndImage{}
 	manifestListDigest, err := schema2ManifestDigest(ref, mfstList)
 	if err != nil {
 		return nil, err
@@ -283,64 +257,68 @@ func (mf *ManifestFetcher) pullManifestList(ctx context.Context, ref reference.N
 	logrus.Debugf("Pulling manifest list entries for ML digest %v", manifestListDigest)
 
 	for _, manifestDescriptor := range mfstList.Manifests {
-		manSvc, err := mf.repo.Manifests(ctx)
+
+		manSvc, err := repo.Manifests(ctx)
 		if err != nil {
 			return nil, err
 		}
-
 		manifest, err := manSvc.Get(ctx, manifestDescriptor.Digest)
 		if err != nil {
 			return nil, err
+		}
+		v, ok := manifest.(*schema2.DeserializedManifest)
+		if !ok {
+			return nil, fmt.Errorf("unsupported manifest format: %s", v)
 		}
 
 		manifestRef, err := reference.WithDigest(ref, manifestDescriptor.Digest)
 		if err != nil {
 			return nil, err
 		}
-
-		if v, ok = manifest.(*schema2.DeserializedManifest); !ok {
-			return nil, fmt.Errorf("unsupported manifest format: %s", v)
-		}
-		img, mfInfo, err := mf.pullSchema2(ctx, manifestRef, *v)
+		img, mfInfo, err := pullManifestSchemaV2(ctx, manifestRef, repo, *v)
 		if err != nil {
 			return nil, err
 		}
-		imageList = append(imageList, img)
 		mfInfo.platform = manifestDescriptor.Platform
-		mfInfos = append(mfInfos, mfInfo)
-		mediaType = append(mediaType, schema2.MediaTypeManifest)
-		if err != nil {
-			return nil, err
-		}
+		infos = append(infos, manifestInfoAndImage{image: img, manfiestInfo: mfInfo})
 	}
-
-	return &manifestListInspect{imageInfos: imageList, mfInfos: mfInfos, mediaTypes: mediaType}, err
+	return infos, nil
 }
 
-func newV2Repository(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint) (distribution.Repository, error) {
-	repoName := repoInfo.Name.Name()
+func (opts FetchOptions) getRepository(ctx context.Context) (distribution.Repository, error) {
+	if err := validateEndpoint(opts.Endpoint); err != nil {
+		return nil, err
+	}
+
+	repoName := opts.RepoInfo.Name.Name()
 	// If endpoint does not support CanonicalName, use the RemoteName instead
-	if endpoint.TrimHostname {
-		repoName = reference.Path(repoInfo.Name)
+	if opts.Endpoint.TrimHostname {
+		repoName = reference.Path(opts.RepoInfo.Name)
 	}
 	repoNameRef, err := reference.WithName(repoName)
 	if err != nil {
 		return nil, err
 	}
 
-	tr, err := GetDistClientTransport(ctx, dockerCli, repoInfo, endpoint, repoName)
+	tr, err := GetDistClientTransport(opts.AuthConfig, opts.Endpoint, repoName)
 	if err != nil {
 		return nil, err
 	}
-	repo, err := client.NewRepository(ctx, repoNameRef, endpoint.URL.String(), tr)
-	if err != nil {
-		return nil, err
+	return client.NewRepository(ctx, repoNameRef, opts.Endpoint.URL.String(), tr)
+}
+
+func validateEndpoint(endpoint registry.APIEndpoint) error {
+	switch endpoint.Version {
+	case registry.APIVersion2:
+		return nil
+	case registry.APIVersion1:
+		return fmt.Errorf("v1 registries are no longer supported")
 	}
-	return repo, nil
+	return fmt.Errorf("unknown version %d for registry %s", endpoint.Version, endpoint.URL)
 }
 
 // GetDistClientTransport builds a transport for use in communicating with a registry
-func GetDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo *registry.RepositoryInfo, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
+func GetDistClientTransport(authConfig types.AuthConfig, endpoint registry.APIEndpoint, repoName string) (http.RoundTripper, error) {
 	// get the http transport, this will be used in a client to upload manifest
 	base := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -354,7 +332,6 @@ func GetDistClientTransport(ctx context.Context, dockerCli command.Cli, repoInfo
 		DisableKeepAlives:   true,
 	}
 
-	authConfig := command.ResolveAuthConfig(ctx, dockerCli, repoInfo.Index)
 	modifiers := registry.DockerHeaders(dockerversion.DockerUserAgent(nil), http.Header{})
 	authTransport := transport.NewTransport(base, modifiers...)
 	challengeManager, confirmedV2, err := registry.PingV2Registry(endpoint.URL, authTransport)
@@ -393,37 +370,27 @@ func continueOnError(err error) bool {
 		return false
 	case *client.UnexpectedHTTPResponseError:
 		return true
+	// TODO: this case seems like it would never get hit. Nothing returns this error
 	case ImageConfigPullError:
 		return false
 	}
-	// let's be nice and fallback if the error is a completely
-	// unexpected one.
-	// If new errors have to be handled in some way, please
-	// add them to the switch above.
-	return true
+	return false
 }
 
-func makeImgManifestInspect(name string, img *Image, tag string, mfInfo manifestInfo, mediaType string, tagList []string) *ImgManifestInspect {
+func makeImgManifestInspect(name string, img *Image, tag string, mfInfo manifestInfo, tagList []string) ImgManifestInspect {
 	var digest digest.Digest
 	if err := mfInfo.digest.Validate(); err == nil {
 		digest = mfInfo.digest
-	}
-
-	if mediaType == manifestlist.MediaTypeManifestList {
-		return &ImgManifestInspect{
-			MediaType: mediaType,
-			Digest:    digest,
-		}
 	}
 
 	var digests []string
 	for _, blobDigest := range mfInfo.blobDigests {
 		digests = append(digests, blobDigest.String())
 	}
-	return &ImgManifestInspect{
+	return ImgManifestInspect{
 		RefName:         name,
 		Size:            mfInfo.length,
-		MediaType:       mediaType,
+		MediaType:       schema2.MediaTypeManifest,
 		Tag:             tag,
 		Digest:          digest,
 		RepoTags:        tagList,
