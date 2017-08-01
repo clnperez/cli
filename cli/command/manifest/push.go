@@ -24,6 +24,7 @@ import (
 	"github.com/docker/distribution/registry/client"
 	digest "github.com/opencontainers/go-digest"
 
+	//"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/manifest/fetcher"
