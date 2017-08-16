@@ -15,6 +15,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
+
+	"github.com/Sirupsen/logrus"
 )
 
 type pushOpts struct {
@@ -208,10 +210,12 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 	if err := mountBlobs(ctx, rclient, req.targetRef, req.manfiestBlobs); err != nil {
 		return err
 	}
+	logrus.Debugf("mounted all blobs for %s", req.targetRef)
 
 	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests); err != nil {
 		return err
 	}
+	logrus.Debugf("pushed references for %s", req.targetRef)
 
 	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list)
 	if err != nil {
