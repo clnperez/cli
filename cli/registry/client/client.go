@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Sirupsen/logrus"
@@ -8,6 +9,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/reference"
 	distributionclient "github.com/docker/distribution/registry/client"
+	//"github.com/docker/distribution/registry/storage"
 	"github.com/docker/docker/api/types"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/opencontainers/go-digest"
@@ -67,9 +69,13 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 	default:
 		return errors.Wrapf(err, "failed to mount blob %s to %s", sourceRef, targetRef)
 	}
-
-	lu.Cancel(ctx)
-	return errors.Errorf("failed to mount blob %s to %s", sourceRef, targetRef)
+	if lu != nil {
+		// http.StatusAccepted
+		lu.Cancel(ctx)
+		logrus.Debugf("mount of blob %s succeeded", sourceRef)
+		return nil
+	}
+	return fmt.Errorf("failed to mount blob %s to %s", sourceRef, targetRef)
 }
 
 // PutManifestList sends the manifest to a registry and returns the new digest
@@ -93,6 +99,9 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 	if err != nil {
 		return digest.Digest(""), err
 	}
+
+	// if windows ...
+	//storage.SkipLayerVerification().Apply(manifestService)
 	dgst, err := manifestService.Put(ctx, manifest, opts...)
 	return dgst, errors.Wrapf(err, "failed to put manifest %s", ref)
 }
