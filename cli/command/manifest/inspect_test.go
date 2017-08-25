@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/docker/cli/cli/internal/test"
 	"github.com/docker/cli/cli/manifest/store"
 	"github.com/docker/cli/cli/manifest/types"
 	manifesttypes "github.com/docker/cli/cli/manifest/types"
+	"github.com/docker/cli/internal/test"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
