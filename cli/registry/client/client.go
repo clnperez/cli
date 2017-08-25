@@ -100,8 +100,6 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 		return digest.Digest(""), err
 	}
 
-	// if windows ...
-	//storage.SkipLayerVerification().Apply(manifestService)
 	dgst, err := manifestService.Put(ctx, manifest, opts...)
 	return dgst, errors.Wrapf(err, "failed to put manifest %s", ref)
 }
