@@ -29,11 +29,16 @@ type mountRequest struct {
 	manifest types.ImageManifest
 }
 
+type manifestBlob struct {
+	canonical reference.Canonical
+	os        string
+}
+
 type pushRequest struct {
 	targetRef     reference.Named
 	list          *manifestlist.DeserializedManifestList
 	mountRequests []mountRequest
-	manfiestBlobs []reference.Canonical
+	manifestBlobs []manifestBlob
 }
 
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
@@ -117,7 +122,7 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		if err != nil {
 			return req, err
 		}
-		req.manfiestBlobs = append(req.manfiestBlobs, blobs...)
+		req.manifestBlobs = append(req.manifestBlobs, blobs...)
 
 		manifestPush, err := buildPutManifestRequest(imageManifest, targetRef)
 		if err != nil {
@@ -182,17 +187,18 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 	return manifest, nil
 }
 
-func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.Named) ([]reference.Canonical, error) {
-	var blobReferences []reference.Canonical
+func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.Named) ([]manifestBlob, error) {
+	var blobReqs []manifestBlob
 
 	for _, blobDigest := range imageManifest.Blobs() {
 		canonical, err := reference.WithDigest(repoName, blobDigest)
 		if err != nil {
 			return nil, err
 		}
-		blobReferences = append(blobReferences, canonical)
+
+		blobReqs = append(blobReqs, manifestBlob{canonical: canonical, os: imageManifest.Platform.OS})
 	}
-	return blobReferences, nil
+	return blobReqs, nil
 }
 
 func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef reference.Named) (mountRequest, error) {
@@ -207,7 +213,7 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error {
 	rclient := dockerCli.RegistryClient()
 
-	if err := mountBlobs(ctx, rclient, req.targetRef, req.manfiestBlobs); err != nil {
+	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs); err != nil {
 		return err
 	}
 	logrus.Debugf("mounted all blobs for %s", req.targetRef)
@@ -236,9 +242,16 @@ func pushReferences(ctx context.Context, out io.Writer, client registryclient.Re
 	return nil
 }
 
-func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []reference.Canonical) error {
+func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []manifestBlob) error {
 	for _, blob := range blobs {
-		if err := client.MountBlob(ctx, blob, ref); err != nil {
+		err := client.MountBlob(ctx, blob.canonical, ref)
+		switch err.(type) {
+		case nil:
+		case registryclient.ErrBlobCreated:
+			if blob.os != "windows" {
+				return fmt.Errorf("error mounting %s to %s", blob.canonical, ref)
+			}
+		default:
 			return err
 		}
 	}
