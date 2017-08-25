@@ -48,6 +48,17 @@ type client struct {
 	userAgent          string
 }
 
+// ErrBlobCreated returned when a blob mount request was created
+type ErrBlobCreated struct {
+	From   reference.Named
+	Target reference.Named
+}
+
+func (err ErrBlobCreated) Error() string {
+	return fmt.Sprintf("blob mounted from: %v to: %v",
+		err.From, err.Target)
+}
+
 var _ RegistryClient = &client{}
 
 // MountBlob into the registry, so it can be referenced by a manifest
@@ -69,13 +80,9 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 	default:
 		return errors.Wrapf(err, "failed to mount blob %s to %s", sourceRef, targetRef)
 	}
-	if lu != nil {
-		// http.StatusAccepted
-		lu.Cancel(ctx)
-		logrus.Debugf("mount of blob %s succeeded", sourceRef)
-		return nil
-	}
-	return fmt.Errorf("failed to mount blob %s to %s", sourceRef, targetRef)
+	lu.Cancel(ctx)
+	logrus.Debugf("mount of blob %s created", sourceRef)
+	return ErrBlobCreated{From: sourceRef, Target: targetRef}
 }
 
 // PutManifestList sends the manifest to a registry and returns the new digest
