@@ -49,22 +49,6 @@ different os/arch combinations. For this reason, manifest lists are often referr
 "multi-arch images." However, a user could create a `manifest list` that points
 to two images -- one for windows on amd64, and one for darwin on amd64.
 
-<<<<<<< Updated upstream
-=======
-## Manifest inspect
-```
-manifest inspect --help
-
-Usage:  docker manifest inspect [OPTIONS] [MANIFEST_LIST] MANIFEST
-
-Display an image manifest, or manifest list
-
-Options:
-      --help       Print usage
-      --insecure   allow communication with an insecure registry
-  -v, --verbose    Output additional info including layers and platform
-```
->>>>>>> Stashed changes
 
 ## Examples
 
@@ -150,10 +134,6 @@ Create a local manifest list for annotating and pushing to a registry
 
 Options:
   -a, --amend   Amend an existing manifest list
-<<<<<<< Updated upstream
-=======
-      --insecure   allow communication with an insecure registry
->>>>>>> Stashed changes
       --help    Print usage
 ```
 
@@ -180,7 +160,6 @@ Push a manifest list to a repository
 
 Options:
       --help    Print usage
-      --insecure   allow push to an insecure registry
   -p, --purge   Remove the local manifest list after push
 ```
 
@@ -211,7 +190,7 @@ sha256:050b213d49d7673ba35014f21454c573dcbec75254a08f4a7c34f66a47c06aba
 
 ```
 
-### Inspect a manifest list
+## Inspect a manifest list
 
 ```bash
 $ docker manifest inspect coolapp:v1
@@ -258,26 +237,3 @@ $ docker manifest inspect coolapp:v1
    ]
 }
 ```
-
-## Insecure Registries
-
-The manifest command interacts solely with a docker registry. Additionally, it has no way to query the list if allowed insecure registries from the engine. Because of this, a flag is needed with `docker manifest` commands if a user wishes to interact with an insecure registry. For each transaction, such as a create, which queries a registry, the `--insecure` flag must be specified. This flag tells the CLI that this registry call may ignore security concerns like missing or self-signed certificates.
-
-### Examples
-Here is an example of creating and pushing a manifest list using an known insecure registry.
-
-```
-$ docker manifest create --insecure myprivateregistry.mycompany.com/repo/image:1.0 \
-    myprivateregistry.mycompany.com/repo/image-linux-ppc64le:1.0 \
-    myprivateregistry.mycompany.com/repo/image-linux-s390x:1.0 \
-    myprivateregistry.mycompany.com/repo/image-linux-arm:1.0 \
-    myprivateregistry.mycompany.com/repo/image-linux-armhf:1.0 \
-    myprivateregistry.mycompany.com/repo/image-windows-amd64:1.0 \
-    myprivateregistry.mycompany.com/repo/image-linux-amd64:1.0
-```
-```
-$ docker manifest push --insecure myprivateregistry.mycompany.com/repo/image:tag
-```
-
-Note that the `--insecure` flag is not required to annotate a `manifest list`, since annotations are to a locally-stored copy of a manifest list. You may also skip the `--insecure` flag if you are performaing a `docker manifest inspect` on a locally-stored manifest list. Be sure to keep in mind that locally-stored manifest lists are never used by the engine on a `pull`.
-
