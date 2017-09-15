@@ -15,8 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
-
-	"github.com/Sirupsen/logrus"
 )
 
 type pushOpts struct {
@@ -97,24 +95,10 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		return req, err
 	}
 
-	targetRepoName, err := registryclient.RepoNameForReference(targetRef)
-	if err != nil {
-		return req, err
-	}
-
 	for _, imageManifest := range manifests {
 		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref)
 		if err != nil {
 			return req, err
-		}
-
-		// if this image is in a different repo, we need to add the layer/blob
-		// digests to the list of requested blob mounts (cross-repository push)
-		// before pushing the manifest list
-		// @TODO: Test pushing manifest list where targetRepoName == manifestRepoName
-		// for all manifests
-		if targetRepoName == manifestRepoName {
-			continue
 		}
 
 		repoName, _ := reference.WithName(manifestRepoName)
@@ -216,13 +200,9 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs); err != nil {
 		return err
 	}
-	logrus.Debugf("mounted all blobs for %s", req.targetRef)
-
 	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests); err != nil {
 		return err
 	}
-	logrus.Debugf("pushed references for %s", req.targetRef)
-
 	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list)
 	if err != nil {
 		return err

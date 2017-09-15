@@ -12,7 +12,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/pkg/testutil/golden"
+	"github.com/gotestyourself/gotestyourself/golden"
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -105,7 +105,7 @@ func TestInspectCommandLocalManifest(t *testing.T) {
 	cmd.SetArgs([]string{"example.com/list:v1", "example.com/alpine:3.0"})
 	require.NoError(t, cmd.Execute())
 	actual := cli.OutBuffer()
-	expected := golden.Get(t, actual.Bytes(), "inspect-manifest.golden")
+	expected := golden.Get(t, "inspect-manifest.golden")
 	assert.Equal(t, string(expected), actual.String())
 }
 
@@ -126,6 +126,6 @@ func TestInspectcommandRemoteManifest(t *testing.T) {
 	cmd.SetArgs([]string{"example.com/alpine:3.0"})
 	require.NoError(t, cmd.Execute())
 	actual := cli.OutBuffer()
-	expected := golden.Get(t, actual.Bytes(), "inspect-manifest.golden")
+	expected := golden.Get(t, "inspect-manifest.golden")
 	assert.Equal(t, string(expected), actual.String())
 }
