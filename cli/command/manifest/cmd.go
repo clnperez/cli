@@ -37,8 +37,8 @@ built for multiple architectures.
 
 To see help for a subcommand, use:
 
-    docker manifest CMD help
+    docker manifest CMD --help
 
-For full details on using docker manifest lists view the registry v2 specification.
+For full details on using docker manifest lists, see the registry v2 specification.
 
 `

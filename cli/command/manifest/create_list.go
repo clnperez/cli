@@ -3,7 +3,6 @@ package manifest
 import (
 	"fmt"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/manifest/store"
@@ -41,7 +40,6 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 		return errors.Wrapf(err, "error parsing name for manifest list (%s): %v", newRef)
 	}
 
-	// TODO: why is this here?
 	_, err = registry.ParseRepositoryInfo(targetRef)
 	if err != nil {
 		return errors.Wrapf(err, "error parsing repository name for manifest list (%s): %v", newRef)
@@ -62,7 +60,6 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 	// Now create the local manifest list transaction by looking up the manifest schemas
 	// for the constituent images:
 	manifests := args[1:]
-	logrus.Debugf("retrieving digests of images...")
 	for _, manifestRef := range manifests {
 		namedRef, err := normalizeReference(manifestRef)
 		if err != nil {

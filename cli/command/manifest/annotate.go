@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/manifest/store"
@@ -53,8 +52,6 @@ func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 	if err != nil {
 		return errors.Wrapf(err, "annotate: Error parsing name for manifest (%s): %s:", opts.image)
 	}
-
-	logrus.Debugf("beginning annotate for %s/%s", targetRef, imgRef)
 
 	ctx := context.Background()
 	manifestStore := dockerCli.ManifestStore()

@@ -3,7 +3,6 @@ package client
 import (
 	"fmt"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/manifestlist"
@@ -15,6 +14,7 @@ import (
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
 
