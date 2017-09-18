@@ -18,8 +18,9 @@ import (
 )
 
 type pushOpts struct {
-	purge  bool
-	target string
+	insecure bool
+	purge    bool
+	target   string
 }
 
 type mountRequest struct {
@@ -37,6 +38,7 @@ type pushRequest struct {
 	list          *manifestlist.DeserializedManifestList
 	mountRequests []mountRequest
 	manifestBlobs []manifestBlob
+	insecure      bool
 }
 
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
@@ -54,10 +56,12 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.BoolVarP(&opts.purge, "purge", "p", false, "Remove the local manifest list after push")
+	flags.BoolVarP(&opts.insecure, "insecure", "i", false, "Allow push to an insecure registry")
 	return cmd
 }
 
 func runPush(dockerCli command.Cli, opts pushOpts) error {
+
 	targetRef, err := normalizeReference(opts.target)
 	if err != nil {
 		return err
@@ -71,7 +75,7 @@ func runPush(dockerCli command.Cli, opts pushOpts) error {
 		return errors.Errorf("%s not found", targetRef)
 	}
 
-	pushRequest, err := buildPushRequest(manifests, targetRef)
+	pushRequest, err := buildPushRequest(manifests, targetRef, opts.insecure)
 	if err != nil {
 		return err
 	}
@@ -86,8 +90,8 @@ func runPush(dockerCli command.Cli, opts pushOpts) error {
 	return nil
 }
 
-func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named) (pushRequest, error) {
-	req := pushRequest{targetRef: targetRef}
+func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named, insecure bool) (pushRequest, error) {
+	req := pushRequest{targetRef: targetRef, insecure: insecure}
 
 	var err error
 	req.list, err = buildManifestList(manifests, targetRef)
@@ -96,7 +100,7 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 	}
 
 	for _, imageManifest := range manifests {
-		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref)
+		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref, insecure)
 		if err != nil {
 			return req, err
 		}
@@ -197,23 +201,24 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error {
 	rclient := dockerCli.RegistryClient()
 
-	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs); err != nil {
+	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs, req.insecure); err != nil {
 		return err
 	}
-	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests); err != nil {
+	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests, req.insecure); err != nil {
 		return err
 	}
-	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list)
+	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list, req.insecure)
 	if err != nil {
 		return err
 	}
+
 	fmt.Fprintln(dockerCli.Out(), dgst.String())
 	return nil
 }
 
-func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest) error {
+func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest, insecure bool) error {
 	for _, mount := range mounts {
-		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest)
+		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest, insecure)
 		if err != nil {
 			return err
 		}
@@ -222,9 +227,9 @@ func pushReferences(ctx context.Context, out io.Writer, client registryclient.Re
 	return nil
 }
 
-func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []manifestBlob) error {
+func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []manifestBlob, insecure bool) error {
 	for _, blob := range blobs {
-		err := client.MountBlob(ctx, blob.canonical, ref)
+		err := client.MountBlob(ctx, blob.canonical, ref, insecure)
 		switch err.(type) {
 		case nil:
 		case registryclient.ErrBlobCreated:

@@ -1,23 +1,17 @@
 package client
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
-	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/distribution/registry/client/auth"
 	"github.com/docker/distribution/registry/client/transport"
 	authtypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/pkg/homedir"
 	"github.com/docker/docker/registry"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 type repositoryEndpoint struct {
@@ -40,31 +34,24 @@ func (r repositoryEndpoint) BaseURL() string {
 	return r.endpoint.URL.String()
 }
 
-func newDefaultRepositoryEndpoint(ref reference.Named) (repositoryEndpoint, error) {
+func newDefaultRepositoryEndpoint(ref reference.Named, insecure bool) (repositoryEndpoint, error) {
 	repoInfo, err := registry.ParseRepositoryInfo(ref)
 	if err != nil {
 		return repositoryEndpoint{}, err
 	}
-	endpoint, err := getDefaultEndpointFromRepoInfo(repoInfo)
+	endpoint, err := getDefaultEndpointFromRepoInfo(repoInfo, insecure)
 	if err != nil {
 		return repositoryEndpoint{}, err
 	}
 	return repositoryEndpoint{info: repoInfo, endpoint: endpoint}, nil
 }
 
-func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo) (registry.APIEndpoint, error) {
+func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo, insecure bool) (registry.APIEndpoint, error) {
 	var err error
 
 	options := registry.ServiceOptions{}
-	// TODO: get list of InsecureRegistries from somewhere. Either from the engine
-	// or maybe add it to the client config (but that would dupliate the list)
-	// options.InsecureRegistries = ...?
-
-	// does what we had before still work? if so, change to a flag on push. (--skip-cert-check?)
-	// By default (unless deprecated), loopback (IPv4 at least...) is automatically added as an insecure registry.
-	options.InsecureRegistries, err = loadLocalInsecureRegistries()
-	if err != nil {
-		return registry.APIEndpoint{}, err
+	if insecure {
+		options.InsecureRegistries = append(options.InsecureRegistries, reference.Domain(repoInfo.Name))
 	}
 	registryService := registry.NewService(options)
 	endpoints, err := registryService.LookupPushEndpoints(reference.Domain(repoInfo.Name))
@@ -120,57 +107,12 @@ func getHTTPTransport(authConfig authtypes.AuthConfig, endpoint registry.APIEndp
 }
 
 // RepoNameForReference returns the repository name from a reference
-func RepoNameForReference(ref reference.Named) (string, error) {
-	repo, err := newDefaultRepositoryEndpoint(ref)
+func RepoNameForReference(ref reference.Named, insecure bool) (string, error) {
+	repo, err := newDefaultRepositoryEndpoint(ref, insecure)
 	if err != nil {
 		return "", err
 	}
 	return repo.Name(), nil
-}
-
-func loadLocalInsecureRegistries() ([]string, error) {
-	insecureRegistries := []string{}
-	// Check $HOME/.docker/config.json. There may be mismatches between what the user has in their
-	// local config and what the daemon they're talking to allows, but we can be okay with that.
-	userHome, err := homedir.GetStatic()
-	if err != nil {
-		return []string{}, fmt.Errorf("Manifest create: lookup local insecure registries: Unable to retreive $HOME")
-	}
-
-	jsonData, err := ioutil.ReadFile(fmt.Sprintf("%s/.docker/config.json", userHome))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return []string{}, fmt.Errorf("Manifest create: Unable to read $HOME/.docker/config.json: %s", err)
-		}
-		// If the file just doesn't exist, no insecure registries were specified.
-		logrus.Debug("Manifest: No insecure registries were specified via $HOME/.docker/config.json")
-		return []string{}, nil
-	}
-
-	if jsonData != nil {
-		cf := configfile.ConfigFile{}
-		if err := json.Unmarshal(jsonData, &cf); err != nil {
-			logrus.Debugf("Manifest create: Unable to unmarshal insecure registries from $HOME/.docker/config.json: %s", err)
-			return []string{}, nil
-		}
-		if cf.InsecureRegistries == nil {
-			return []string{}, nil
-		}
-		// @TODO: Add tests for a) specifying in config.json, b) invalid entries
-		for _, reg := range cf.InsecureRegistries {
-			if err := net.ParseIP(reg); err == nil {
-				insecureRegistries = append(insecureRegistries, reg)
-			} else if _, _, err := net.ParseCIDR(reg); err == nil {
-				insecureRegistries = append(insecureRegistries, reg)
-			} else if ips, err := net.LookupHost(reg); err == nil {
-				insecureRegistries = append(insecureRegistries, ips...)
-			} else {
-				return []string{}, fmt.Errorf("Manifest create: Invalid registry (%s) specified in ~/.docker/config.json: %s", reg, err)
-			}
-		}
-	}
-
-	return insecureRegistries, nil
 }
 
 type existingTokenHandler struct {
