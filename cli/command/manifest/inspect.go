@@ -16,9 +16,10 @@ import (
 )
 
 type inspectOptions struct {
-	ref     string
-	list    string
-	verbose bool
+	ref      string
+	list     string
+	verbose  bool
+	insecure bool
 }
 
 // NewInspectCommand creates a new `docker manifest inspect` command
@@ -42,6 +43,7 @@ func newInspectCommand(dockerCli command.Cli) *cobra.Command {
 	}
 
 	flags := cmd.Flags()
+	flags.BoolVarP(&opts.insecure, "insecure", "i", false, "allow communication with an insecure registry")
 	flags.BoolVarP(&opts.verbose, "verbose", "v", false, "Output additional info including layers and platform")
 	return cmd
 }
@@ -52,7 +54,7 @@ func runInspect(dockerCli command.Cli, opts inspectOptions) error {
 		return err
 	}
 
-	// If list reference is provided display the local manifest in a list
+	// If list reference is provided, display the local manifest in a list
 	if opts.list != "" {
 		listRef, err := normalizeReference(opts.list)
 		if err != nil {
@@ -74,7 +76,7 @@ func runInspect(dockerCli command.Cli, opts inspectOptions) error {
 
 	// Next try a remote manifest
 	ctx := context.Background()
-	registryClient := dockerCli.RegistryClient()
+	registryClient := dockerCli.RegistryClient(opts.insecure)
 	imageManifest, err := registryClient.GetManifest(ctx, namedRef)
 	if err == nil {
 		return printManifest(dockerCli, imageManifest, opts)

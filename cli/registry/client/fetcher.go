@@ -205,18 +205,22 @@ func (c *client) iterateEndpoints(ctx context.Context, namedRef reference.Named,
 
 	confirmedTLSRegistries := make(map[string]bool)
 	for _, endpoint := range endpoints {
+
 		if endpoint.Version == registry.APIVersion1 {
-			logrus.Debugf("Skipping v1 endpoint %s", endpoint.URL)
+			logrus.Debugf("skipping v1 endpoint %s", endpoint.URL)
 			continue
 		}
 
 		if endpoint.URL.Scheme != "https" {
 			if _, confirmedTLS := confirmedTLSRegistries[endpoint.URL.Host]; confirmedTLS {
-				logrus.Debugf("Skipping non-TLS endpoint %s for host/port that appears to use TLS", endpoint.URL)
+				logrus.Debugf("skipping non-TLS endpoint %s for host/port that appears to use TLS", endpoint.URL)
 				continue
 			}
 		}
 
+		if c.insecureRegistry {
+			endpoint.TLSConfig.InsecureSkipVerify = true
+		}
 		repoEndpoint := repositoryEndpoint{endpoint: endpoint, info: repoInfo}
 		repo, err := c.getRepositoryForReference(ctx, namedRef, repoEndpoint)
 		if err != nil {
@@ -229,9 +233,10 @@ func (c *client) iterateEndpoints(ctx context.Context, namedRef reference.Named,
 				if endpoint.URL.Scheme == "https" {
 					confirmedTLSRegistries[endpoint.URL.Host] = true
 				}
-				logrus.Debugf("Continuing on error (%T) %s", err, err)
+				logrus.Debugf("continuing on error (%T) %s", err, err)
 				continue
 			}
+			logrus.Debugf("not continuing on error (%T) %s", err, err)
 			return err
 		}
 		if done {
@@ -249,7 +254,7 @@ func allEndpoints(namedRef reference.Named) ([]registry.APIEndpoint, error) {
 	}
 	registryService := registry.NewService(registry.ServiceOptions{})
 	endpoints, err := registryService.LookupPullEndpoints(reference.Domain(repoInfo.Name))
-	logrus.Debugf("Endpoints for %s: %v", namedRef, endpoints)
+	logrus.Debugf("endpoints for %s: %v", namedRef, endpoints)
 	return endpoints, err
 }
 
@@ -262,7 +267,7 @@ func newNotFoundError(ref string) *notFoundError {
 }
 
 func (n *notFoundError) Error() string {
-	return fmt.Sprintf("No such manifest: %s", n.object)
+	return fmt.Sprintf("no such manifest: %s", n.object)
 }
 
 // NotFound interface

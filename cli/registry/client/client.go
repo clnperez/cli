@@ -22,14 +22,15 @@ import (
 type RegistryClient interface {
 	GetManifest(ctx context.Context, ref reference.Named) (manifesttypes.ImageManifest, error)
 	GetManifestList(ctx context.Context, ref reference.Named) ([]manifesttypes.ImageManifest, error)
-	MountBlob(ctx context.Context, source reference.Canonical, target reference.Named, insecure bool) error
-	PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest, insecure bool) (digest.Digest, error)
+	MountBlob(ctx context.Context, source reference.Canonical, target reference.Named) error
+	PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest) (digest.Digest, error)
 }
 
 // NewRegistryClient returns a new RegistryClient with a resolver
-func NewRegistryClient(resolver AuthConfigResolver, userAgent string) RegistryClient {
+func NewRegistryClient(resolver AuthConfigResolver, userAgent string, insecure bool) RegistryClient {
 	return &client{
 		authConfigResolver: resolver,
+		insecureRegistry:   insecure,
 		userAgent:          userAgent,
 	}
 }
@@ -45,6 +46,7 @@ type PutManifestOptions struct {
 
 type client struct {
 	authConfigResolver AuthConfigResolver
+	insecureRegistry   bool
 	userAgent          string
 }
 
@@ -62,8 +64,8 @@ func (err ErrBlobCreated) Error() string {
 var _ RegistryClient = &client{}
 
 // MountBlob into the registry, so it can be referenced by a manifest
-func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, targetRef reference.Named, insecure bool) error {
-	repoEndpoint, err := newDefaultRepositoryEndpoint(targetRef, insecure)
+func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, targetRef reference.Named) error {
+	repoEndpoint, err := newDefaultRepositoryEndpoint(targetRef, c.insecureRegistry)
 	if err != nil {
 		return err
 	}
@@ -86,8 +88,8 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 }
 
 // PutManifestList sends the manifest to a registry and returns the new digest
-func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest, insecure bool) (digest.Digest, error) {
-	repoEndpoint, err := newDefaultRepositoryEndpoint(ref, insecure)
+func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest) (digest.Digest, error) {
+	repoEndpoint, err := newDefaultRepositoryEndpoint(ref, c.insecureRegistry)
 	if err != nil {
 		return digest.Digest(""), err
 	}

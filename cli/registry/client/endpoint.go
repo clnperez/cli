@@ -39,20 +39,20 @@ func newDefaultRepositoryEndpoint(ref reference.Named, insecure bool) (repositor
 	if err != nil {
 		return repositoryEndpoint{}, err
 	}
-	endpoint, err := getDefaultEndpointFromRepoInfo(repoInfo, insecure)
+	endpoint, err := getDefaultEndpointFromRepoInfo(repoInfo)
 	if err != nil {
 		return repositoryEndpoint{}, err
+	}
+	if insecure {
+		endpoint.TLSConfig.InsecureSkipVerify = true
 	}
 	return repositoryEndpoint{info: repoInfo, endpoint: endpoint}, nil
 }
 
-func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo, insecure bool) (registry.APIEndpoint, error) {
+func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo) (registry.APIEndpoint, error) {
 	var err error
 
 	options := registry.ServiceOptions{}
-	if insecure {
-		options.InsecureRegistries = append(options.InsecureRegistries, reference.Domain(repoInfo.Name))
-	}
 	registryService := registry.NewService(options)
 	endpoints, err := registryService.LookupPushEndpoints(reference.Domain(repoInfo.Name))
 	if err != nil {
@@ -107,8 +107,9 @@ func getHTTPTransport(authConfig authtypes.AuthConfig, endpoint registry.APIEndp
 }
 
 // RepoNameForReference returns the repository name from a reference
-func RepoNameForReference(ref reference.Named, insecure bool) (string, error) {
-	repo, err := newDefaultRepositoryEndpoint(ref, insecure)
+func RepoNameForReference(ref reference.Named) (string, error) {
+	// insecure is fine since this only returns the name
+	repo, err := newDefaultRepositoryEndpoint(ref, false)
 	if err != nil {
 		return "", err
 	}

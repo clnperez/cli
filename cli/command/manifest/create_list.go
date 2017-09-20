@@ -12,12 +12,13 @@ import (
 	"golang.org/x/net/context"
 )
 
-type annotateOpts struct {
-	amend bool
+type createOpts struct {
+	amend    bool
+	insecure bool
 }
 
 func newCreateListCommand(dockerCli command.Cli) *cobra.Command {
-	opts := annotateOpts{}
+	opts := createOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "create MANFEST_LIST MANIFEST [MANIFEST...]",
@@ -29,11 +30,12 @@ func newCreateListCommand(dockerCli command.Cli) *cobra.Command {
 	}
 
 	flags := cmd.Flags()
+	flags.BoolVarP(&opts.insecure, "insecure", "i", false, "allow communication with an insecure registry")
 	flags.BoolVarP(&opts.amend, "amend", "a", false, "Amend an existing manifest list")
 	return cmd
 }
 
-func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts) error {
+func createManifestList(dockerCli command.Cli, args []string, opts createOpts) error {
 	newRef := args[0]
 	targetRef, err := normalizeReference(newRef)
 	if err != nil {
@@ -67,7 +69,7 @@ func createManifestList(dockerCli command.Cli, args []string, opts annotateOpts)
 			return err
 		}
 
-		manifest, err := getManifest(ctx, dockerCli, targetRef, namedRef)
+		manifest, err := getManifest(ctx, dockerCli, targetRef, namedRef, opts.insecure)
 		if err != nil {
 			return err
 		}

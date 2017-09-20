@@ -100,7 +100,7 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 	}
 
 	for _, imageManifest := range manifests {
-		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref, insecure)
+		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref)
 		if err != nil {
 			return req, err
 		}
@@ -199,15 +199,15 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 }
 
 func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error {
-	rclient := dockerCli.RegistryClient()
+	rclient := dockerCli.RegistryClient(req.insecure)
 
-	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs, req.insecure); err != nil {
+	if err := mountBlobs(ctx, rclient, req.targetRef, req.manifestBlobs); err != nil {
 		return err
 	}
-	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests, req.insecure); err != nil {
+	if err := pushReferences(ctx, dockerCli.Out(), rclient, req.mountRequests); err != nil {
 		return err
 	}
-	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list, req.insecure)
+	dgst, err := rclient.PutManifest(ctx, req.targetRef, req.list)
 	if err != nil {
 		return err
 	}
@@ -216,9 +216,9 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 	return nil
 }
 
-func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest, insecure bool) error {
+func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest) error {
 	for _, mount := range mounts {
-		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest, insecure)
+		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest)
 		if err != nil {
 			return err
 		}
@@ -227,9 +227,9 @@ func pushReferences(ctx context.Context, out io.Writer, client registryclient.Re
 	return nil
 }
 
-func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []manifestBlob, insecure bool) error {
+func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref reference.Named, blobs []manifestBlob) error {
 	for _, blob := range blobs {
-		err := client.MountBlob(ctx, blob.canonical, ref, insecure)
+		err := client.MountBlob(ctx, blob.canonical, ref)
 		switch err.(type) {
 		case nil:
 		case registryclient.ErrBlobCreated:
