@@ -106,7 +106,7 @@ func (c *FakeCli) ManifestStore() manifeststore.Store {
 }
 
 // RegistryClient returns a fake client for testing
-func (c *FakeCli) RegistryClient() registryclient.RegistryClient {
+func (c *FakeCli) RegistryClient(insecure bool) registryclient.RegistryClient {
 	return c.registryClient
 }
 

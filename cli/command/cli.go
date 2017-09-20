@@ -48,7 +48,7 @@ type Cli interface {
 	ConfigFile() *configfile.ConfigFile
 	ServerInfo() ServerInfo
 	ManifestStore() manifeststore.Store
-	RegistryClient() registryclient.RegistryClient
+	RegistryClient(bool) registryclient.RegistryClient
 }
 
 // DockerCli is an instance the docker command line client.
@@ -121,11 +121,11 @@ func (cli *DockerCli) ManifestStore() manifeststore.Store {
 
 // RegistryClient returns a client for communicating with a Docker distribution
 // registry
-func (cli *DockerCli) RegistryClient() registryclient.RegistryClient {
+func (cli *DockerCli) RegistryClient(allowInsecure bool) registryclient.RegistryClient {
 	resolver := func(ctx context.Context, index *registrytypes.IndexInfo) types.AuthConfig {
 		return ResolveAuthConfig(ctx, cli, index)
 	}
-	return registryclient.NewRegistryClient(resolver, UserAgent())
+	return registryclient.NewRegistryClient(resolver, UserAgent(), allowInsecure)
 }
 
 // Initialize the dockerCli runs initialization that must happen after command

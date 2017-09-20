@@ -1,12 +1,13 @@
 package manifest
 
 import (
+	"fmt"
+
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/manifest/store"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"golang.org/x/net/context"
 )
 
 type annotateOptions struct {
@@ -53,40 +54,33 @@ func runManifestAnnotate(dockerCli command.Cli, opts annotateOptions) error {
 		return errors.Wrapf(err, "annotate: Error parsing name for manifest (%s): %s:", opts.image)
 	}
 
-	ctx := context.Background()
 	manifestStore := dockerCli.ManifestStore()
-	imageManfiest, err := manifestStore.Get(targetRef, imgRef)
+	imageManifest, err := manifestStore.Get(targetRef, imgRef)
 	switch {
 	case store.IsNotFound(err):
-		imageManfiest, err = getManifest(ctx, dockerCli, targetRef, imgRef)
-		if err != nil {
-			return err
-		}
-		if err := manifestStore.Save(targetRef, imgRef, imageManfiest); err != nil {
-			return err
-		}
+		return fmt.Errorf("manifest for image %s does not exist in %s", opts.image, opts.target)
 	case err != nil:
 		return err
 	}
 
 	// Update the mf
 	if opts.os != "" {
-		imageManfiest.Platform.OS = opts.os
+		imageManifest.Platform.OS = opts.os
 	}
 	if opts.arch != "" {
-		imageManfiest.Platform.Architecture = opts.arch
+		imageManifest.Platform.Architecture = opts.arch
 	}
 	for _, osFeature := range opts.osFeatures {
-		imageManfiest.Platform.OSFeatures = appendIfUnique(imageManfiest.Platform.OSFeatures, osFeature)
+		imageManifest.Platform.OSFeatures = appendIfUnique(imageManifest.Platform.OSFeatures, osFeature)
 	}
 	if opts.variant != "" {
-		imageManfiest.Platform.Variant = opts.variant
+		imageManifest.Platform.Variant = opts.variant
 	}
 
-	if !isValidOSArch(imageManfiest.Platform.OS, imageManfiest.Platform.Architecture) {
+	if !isValidOSArch(imageManifest.Platform.OS, imageManifest.Platform.Architecture) {
 		return errors.Errorf("manifest entry for image has unsupported os/arch combination: %s/%s", opts.os, opts.arch)
 	}
-	return manifestStore.Save(targetRef, imgRef, imageManfiest)
+	return manifestStore.Save(targetRef, imgRef, imageManifest)
 }
 
 func appendIfUnique(list []string, str string) []string {
