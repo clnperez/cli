@@ -56,7 +56,7 @@ func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.BoolVarP(&opts.purge, "purge", "p", false, "Remove the local manifest list after push")
-	flags.BoolVarP(&opts.insecure, "insecure", "i", false, "Allow push to an insecure registry")
+	flags.BoolVar(&opts.insecure, "insecure", false, "Allow push to an insecure registry")
 	return cmd
 }
 
