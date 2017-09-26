@@ -18,11 +18,8 @@
 		]
 	},
 	"Platform": {
-		"architecture": "arm",
-		"os": "freebsd",
-		"os.features": [
-			"feature1"
-		],
+		"architecture": "amd64",
+		"os": "linux",
 		"variant": "v7"
 	}
 }
