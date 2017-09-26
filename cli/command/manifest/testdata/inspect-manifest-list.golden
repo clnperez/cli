@@ -7,8 +7,8 @@
          "size": 428,
          "digest": "sha256:b50613d99a375702c3f4a12ade014a33115a3bb1bfc8271d04164d633a0ab0c2",
          "platform": {
-            "architecture": "",
-            "os": ""
+            "architecture": "amd64",
+            "os": "linux"
          }
       },
       {
@@ -16,8 +16,8 @@
          "size": 428,
          "digest": "sha256:b50613d99a375702c3f4a12ade014a33115a3bb1bfc8271d04164d633a0ab0c2",
          "platform": {
-            "architecture": "",
-            "os": ""
+            "architecture": "amd64",
+            "os": "linux"
          }
       }
    ]
