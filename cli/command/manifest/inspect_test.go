@@ -51,7 +51,7 @@ func fullImageManifest(t *testing.T, ref reference.Named) types.ImageManifest {
 	})
 	require.NoError(t, err)
 	// TODO: include image data for verbose inspect
-	return types.NewImageManifest(ref, digest.Digest("abcd"), types.Image{}, man)
+	return types.NewImageManifest(ref, digest.Digest("abcd"), types.Image{OS: "linux", Architecture: "amd64"}, man)
 }
 
 func TestInspectCommandLocalManifestNotFound(t *testing.T) {
