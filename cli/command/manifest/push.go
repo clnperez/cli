@@ -169,7 +169,7 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 
 	if err = manifest.Descriptor.Digest.Validate(); err != nil {
 		return manifestlist.ManifestDescriptor{}, errors.Wrapf(err,
-			"digest parse of image %q failed with error: %v", imageManifest.Ref)
+			"digest parse of image %q failed", imageManifest.Ref)
 	}
 
 	return manifest, nil
@@ -189,6 +189,7 @@ func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.
 	return blobReqs, nil
 }
 
+// nolint: interfacer
 func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef reference.Named) (mountRequest, error) {
 	refWithoutTag, err := reference.WithName(targetRef.Name())
 	if err != nil {
