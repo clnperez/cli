@@ -4,9 +4,9 @@ import (
 	"io/ioutil"
 	"testing"
 
+	manifesttypes "github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/cli/internal/test"
 	"github.com/docker/cli/internal/test/testutil"
-	manifesttypes "github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution/reference"
 	"github.com/gotestyourself/gotestyourself/golden"
 	"github.com/pkg/errors"
@@ -17,17 +17,16 @@ import (
 
 func TestManifestCreateErrors(t *testing.T) {
 	testCases := []struct {
-		args		[]string
-		expectedError	string
+		args          []string
+		expectedError string
 	}{
 		{
-			args:	[]string{"too-few-arguments"},
-			expectedError:	"requires at least 2 arguments",
-
+			args:          []string{"too-few-arguments"},
+			expectedError: "requires at least 2 arguments",
 		},
 		{
-			args:	[]string{"th!si'sa/fa!ke/reg1$sty/name", "th!si'sa/fa!ke/reg1$sty/nam32"},
-			expectedError:	"error parsing name for manifest list",
+			args:          []string{"th!si'sa/fa!ke/reg1$sty/name", "th!si'sa/fa!ke/reg1$sty/nam32"},
+			expectedError: "error parsing name for manifest list",
 		},
 	}
 
