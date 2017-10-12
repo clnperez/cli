@@ -25,7 +25,7 @@ func TestManifestCreateErrors(t *testing.T) {
 			expectedError: "requires at least 2 arguments",
 		},
 		{
-			args:          []string{"th!si'sa/fa!ke/reg1$sty/name", "th!si'sa/fa!ke/reg1$sty/nam32"},
+			args:          []string{"th!si'sa/fa!ke/li$t/name", "example.com/alpine:3.0"},
 			expectedError: "error parsing name for manifest list",
 		},
 	}
