@@ -254,7 +254,10 @@ func allEndpoints(namedRef reference.Named) ([]registry.APIEndpoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	registryService := registry.NewService(registry.ServiceOptions{})
+	registryService, err := registry.NewService(registry.ServiceOptions{})
+	if err != nil {
+		return []registry.APIEndpoint{}, err
+	}
 	endpoints, err := registryService.LookupPullEndpoints(reference.Domain(repoInfo.Name))
 	logrus.Debugf("endpoints for %s: %v", namedRef, endpoints)
 	return endpoints, err

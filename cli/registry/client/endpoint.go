@@ -53,7 +53,10 @@ func getDefaultEndpointFromRepoInfo(repoInfo *registry.RepositoryInfo) (registry
 	var err error
 
 	options := registry.ServiceOptions{}
-	registryService := registry.NewService(options)
+	registryService, err := registry.NewService(options)
+	if err != nil {
+		return registry.APIEndpoint{}, err
+	}
 	endpoints, err := registryService.LookupPushEndpoints(reference.Domain(repoInfo.Name))
 	if err != nil {
 		return registry.APIEndpoint{}, err
