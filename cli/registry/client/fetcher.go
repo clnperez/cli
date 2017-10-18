@@ -34,6 +34,8 @@ func fetchManifest(ctx context.Context, repo distribution.Repository, ref refere
 			return types.ImageManifest{}, err
 		}
 		return imageManifest, nil
+	case *manifestlist.DeserializedManifestList:
+		return types.ImageManifest{}, errors.Errorf("%s is a manifest list", ref)
 	}
 	return types.ImageManifest{}, errors.Errorf("%s is not a manifest", ref)
 }
