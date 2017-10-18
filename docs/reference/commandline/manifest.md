@@ -44,7 +44,7 @@ A `manifest list` is a list of image layers that is created by specifying one or
 more (ideally more than one) image names. It can then be used in the same way as
 an image name in `docker pull` and `docker run` commands, for example.
 
-Ideally a `manifest list` is created from images that are identical in function for 
+Ideally a `manifest list` is created from images that are identical in function for
 different os/arch combinations. For this reason, manifest lists are often referred to as
 "multi-arch images." However, a user could create a `manifest list` that points
 to two images -- one for windows on amd64, and one for darwin on amd64.

@@ -102,9 +102,9 @@ func (c *FakeCli) ErrBuffer() *bytes.Buffer {
 	return c.err
 }
 
-// ManifestStore returns a fake store used for testing
-func (c *FakeCli) ManifestStore() manifeststore.Store {
-	return c.manifestStore
+// SetNotaryClient sets the internal getter for retrieving a NotaryClient
+func (c *FakeCli) SetNotaryClient(notaryClientFunc notaryClientFuncType) {
+	c.notaryClientFunc = notaryClientFunc
 }
 
 // NotaryClient returns an err for testing unless defined
