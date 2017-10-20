@@ -1,6 +1,6 @@
 {
 	"Ref": "example.com/alpine:3.0",
-	"Digest": "abcd",
+	"Digest": "sha256:7328f6f8b41890597575cbaadc884e7386ae0acc53b747401ebce5cf0d62abcd",
 	"SchemaV2Manifest": {
 		"schemaVersion": 2,
 		"mediaType": "application/vnd.docker.distribution.manifest.v2+json",
