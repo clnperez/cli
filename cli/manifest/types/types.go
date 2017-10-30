@@ -91,10 +91,10 @@ func (s *SerializableNamed) MarshalJSON() ([]byte, error) {
 // Image is the minimal set of fields required to set default platform settings
 // on a manifest.
 type Image struct {
-	Architecture string
-	OS           string
-	OSVersion    string
-	OSFeatures   []string
+	Architecture string   `json:"architecture,omitempty"`
+	OS           string   `json:"os,omitempty"`
+	OSVersion    string   `json:"os.version,omitempty"`
+	OSFeatures   []string `json:"os.features,omitempty"`
 }
 
 // NewImageFromJSON creates an Image configuration from json.
