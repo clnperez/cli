@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	manifesttypes "github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution"
@@ -61,6 +62,14 @@ func (err ErrBlobCreated) Error() string {
 		err.From, err.Target)
 }
 
+type ErrHTTPProto struct {
+	OrigErr string
+}
+
+func (err ErrHTTPProto) Error() string {
+	return err.OrigErr
+}
+
 var _ RegistryClient = &client{}
 
 // MountBlob into the registry, so it can be referenced by a manifest
@@ -116,7 +125,9 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 func (c *client) getRepositoryForReference(ctx context.Context, ref reference.Named, repoEndpoint repositoryEndpoint) (distribution.Repository, error) {
 	httpTransport, err := c.getHTTPTransportForRepoEndpoint(ctx, repoEndpoint)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to configure transport")
+		if strings.Contains(err.Error(), "server gave HTTP response to HTTPS client") {
+			return nil, ErrHTTPProto{OrigErr: err.Error()}
+		}
 	}
 	repoName, err := reference.WithName(repoEndpoint.Name())
 	if err != nil {

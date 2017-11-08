@@ -226,9 +226,17 @@ func (c *client) iterateEndpoints(ctx context.Context, namedRef reference.Named,
 		repoEndpoint := repositoryEndpoint{endpoint: endpoint, info: repoInfo}
 		repo, err := c.getRepositoryForReference(ctx, namedRef, repoEndpoint)
 		if err != nil {
+			logrus.Debugf("error with repo endpoint %s: %s", repoEndpoint, err)
+			if _, ok := err.(ErrHTTPProto); ok {
+				continue
+			}
 			return err
 		}
 
+		if endpoint.URL.Scheme == "http" && !c.insecureRegistry {
+			logrus.Debugf("skipping non-tls registry endpoint: %s", endpoint.URL)
+			continue
+		}
 		done, err := each(ctx, repo, namedRef)
 		if err != nil {
 			if continueOnError(err) {
