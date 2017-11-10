@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/cli/cli/manifest/types"
 	"github.com/docker/distribution/reference"
+	"github.com/sirupsen/logrus"
 )
 
 // Store manages local storage of image distribution manifests
@@ -44,6 +45,7 @@ func (s *fsStore) Get(listRef reference.Reference, manifest reference.Reference)
 
 func (s *fsStore) getFromFilename(ref reference.Reference, filename string) (types.ImageManifest, error) {
 	bytes, err := ioutil.ReadFile(filename)
+	logrus.Debugf("retrieved manifest from file: \n%s", bytes)
 	switch {
 	case os.IsNotExist(err):
 		return types.ImageManifest{}, newNotFoundError(ref.String())
@@ -51,7 +53,10 @@ func (s *fsStore) getFromFilename(ref reference.Reference, filename string) (typ
 		return types.ImageManifest{}, err
 	}
 	var manifestInfo types.ImageManifest
-	return manifestInfo, json.Unmarshal(bytes, &manifestInfo)
+	//return manifestInfo, json.Unmarshal(bytes, &manifestInfo)
+	err = json.Unmarshal(bytes, &manifestInfo)
+	logrus.Debugf("unmarshalled manifest from file: \n%s", manifestInfo)
+	return manifestInfo, err
 }
 
 // GetList returns all the local manifests for a transaction
@@ -101,10 +106,12 @@ func (s *fsStore) Save(listRef reference.Reference, manifest reference.Reference
 	}
 	filename := manifestToFilename(s.root, listRef.String(), manifest.String())
 	// indent to maintain sha parity with original from registry
-	bytes, err := json.MarshalIndent(image, "", "  ")
+	bytes, err := json.Marshal(image)
 	if err != nil {
 		return err
 	}
+	logrus.Debugf("storing image: %s: \n", image)
+	logrus.Debugf("writing manifest to file: \n %s", bytes)
 	return ioutil.WriteFile(filename, bytes, 0644)
 }
 

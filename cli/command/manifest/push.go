@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -9,12 +10,15 @@ import (
 	"github.com/docker/cli/cli/manifest/types"
 	registryclient "github.com/docker/cli/cli/registry/client"
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
+
+	"github.com/sirupsen/logrus"
 )
 
 type pushOpts struct {
@@ -25,7 +29,7 @@ type pushOpts struct {
 
 type mountRequest struct {
 	ref      reference.Named
-	manifest types.ImageManifest
+	manifest schema2.DeserializedManifest
 }
 
 type manifestBlob struct {
@@ -111,6 +115,7 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 			return req, err
 		}
 		req.manifestBlobs = append(req.manifestBlobs, blobs...)
+		logrus.Debugf("request manifest blobs: %s '\n'", blobs)
 
 		manifestPush, err := buildPutManifestRequest(imageManifest, targetRef)
 		if err != nil {
@@ -159,6 +164,10 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 	if err != nil {
 		return manifestlist.ManifestDescriptor{}, err
 	}
+	logrus.Debugf("raw manifest payload: \n%s", raw)
+	var unmarshalledTemp schema2.DeserializedManifest
+	json.Unmarshal(raw, &unmarshalledTemp)
+	logrus.Debugf("unmarshalled payload: \n%s", unmarshalledTemp)
 
 	manifest := manifestlist.ManifestDescriptor{
 		Platform: imageManifest.Platform,
@@ -179,11 +188,12 @@ func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.
 	var blobReqs []manifestBlob
 
 	for _, blobDigest := range imageManifest.Blobs() {
+		logrus.Debugf("blobDigest: %s", blobDigest)
 		canonical, err := reference.WithDigest(repoName, blobDigest)
 		if err != nil {
 			return nil, err
 		}
-
+		logrus.Debugf("canonical: %s", canonical)
 		blobReqs = append(blobReqs, manifestBlob{canonical: canonical, os: imageManifest.Platform.OS})
 	}
 	return blobReqs, nil
@@ -196,7 +206,16 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	mountRef, err := reference.WithDigest(refWithoutTag, imageManifest.Digest)
-	return mountRequest{ref: mountRef, manifest: imageManifest}, err
+	v2ManifestBytes, err := json.MarshalIndent(&imageManifest.SchemaV2Manifest, "", "   ")
+	if err != nil {
+		return mountRequest{}, err
+	}
+	var v2Manifest schema2.DeserializedManifest
+	if err = json.Unmarshal(v2ManifestBytes, v2Manifest); err != nil {
+		return mountRequest{}, err
+	}
+	// format as the registry does to maintain sha consistency @TODO? RIGHT?
+	return mountRequest{ref: mountRef, manifest: v2Manifest}, err
 }
 
 func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error {
@@ -219,10 +238,16 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 
 func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest) error {
 	for _, mount := range mounts {
+		logrus.Debugf("pushing ref for %s: '\n'", mount.manifest)
+		// THERE ARE EXTRA LEADING SPACES IN MY JSON! HOW DO I GET HTEM OUT I HATE JSON! I MISS BIT-SHIFTING.
 		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest)
 		if err != nil {
 			return err
 		}
+		// This is where the digest shows up as calculated, and the calculated digest came from PutManifest, so
+		// it calculates it when it does the push, so it is calculating the digest of the ImageManifest that
+		// we store locally. How do we get the extra leading spaces out? Do we not put the ImageManifest? It's got more
+		// json spaces b/c the DeserializedManifest is inside the ImageManifest
 		fmt.Fprintf(out, "Pushed manifest %s with digest: %s\n", mount.ref, newDigest)
 	}
 	return nil
