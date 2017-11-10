@@ -114,6 +114,8 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		if err != nil {
 			return req, err
 		}
+		// my current theory is that the manifest isn't being pushed ... but then how was it ever?
+		//
 		req.manifestBlobs = append(req.manifestBlobs, blobs...)
 		logrus.Debugf("request manifest blobs: %s '\n'", blobs)
 
@@ -164,6 +166,7 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 	if err != nil {
 		return manifestlist.ManifestDescriptor{}, err
 	}
+
 	logrus.Debugf("raw manifest payload: \n%s", raw)
 	var unmarshalledTemp schema2.DeserializedManifest
 	json.Unmarshal(raw, &unmarshalledTemp)
@@ -172,7 +175,7 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 	manifest := manifestlist.ManifestDescriptor{
 		Platform: imageManifest.Platform,
 	}
-	manifest.Descriptor.Digest = digest.FromBytes(raw)
+	manifest.Descriptor.Digest = digest.FromBytes(raw) // is this right? the platform dind't exist with the original raw ...
 	manifest.Size = int64(len(raw))
 	manifest.MediaType = mediaType
 
@@ -180,6 +183,8 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 		return manifestlist.ManifestDescriptor{}, errors.Wrapf(err,
 			"digest parse of image %q failed", imageManifest.Ref)
 	}
+
+	logrus.Debugf("completed manifestDescriptor: '\n' %s", manifest)
 
 	return manifest, nil
 }
@@ -206,16 +211,20 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	mountRef, err := reference.WithDigest(refWithoutTag, imageManifest.Digest)
+
+	// experimenting -->
 	v2ManifestBytes, err := json.MarshalIndent(&imageManifest.SchemaV2Manifest, "", "   ")
 	if err != nil {
 		return mountRequest{}, err
 	}
 	var v2Manifest schema2.DeserializedManifest
-	if err = json.Unmarshal(v2ManifestBytes, v2Manifest); err != nil {
+	if err = json.Unmarshal(v2ManifestBytes, &v2Manifest); err != nil {
 		return mountRequest{}, err
 	}
-	// format as the registry does to maintain sha consistency @TODO? RIGHT?
 	return mountRequest{ref: mountRef, manifest: v2Manifest}, err
+	// <-- end experimenting
+
+	//return mountRequest{ref: mountRef, manifest: *imageManifest.SchemaV2Manifest}, err
 }
 
 func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error {
@@ -239,16 +248,11 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest) error {
 	for _, mount := range mounts {
 		logrus.Debugf("pushing ref for %s: '\n'", mount.manifest)
-		// THERE ARE EXTRA LEADING SPACES IN MY JSON! HOW DO I GET HTEM OUT I HATE JSON! I MISS BIT-SHIFTING.
 		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest)
 		if err != nil {
 			return err
 		}
-		// This is where the digest shows up as calculated, and the calculated digest came from PutManifest, so
-		// it calculates it when it does the push, so it is calculating the digest of the ImageManifest that
-		// we store locally. How do we get the extra leading spaces out? Do we not put the ImageManifest? It's got more
-		// json spaces b/c the DeserializedManifest is inside the ImageManifest
-		fmt.Fprintf(out, "Pushed manifest %s with digest: %s\n", mount.ref, newDigest)
+		fmt.Fprintf(out, "Pushed ref %s with digest: %s\n", mount.ref, newDigest)
 	}
 	return nil
 }

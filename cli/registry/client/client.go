@@ -98,7 +98,7 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 
 // PutManifestList sends the manifest to a registry and returns the new digest
 func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest) (digest.Digest, error) {
-	logrus.Debugf("putting manifest %s: '\n' %s", ref, manifest)
+	logrus.Debugf("[registry:client] putting manifest/list: %s", manifest)
 	repoEndpoint, err := newDefaultRepositoryEndpoint(ref, c.insecureRegistry)
 	if err != nil {
 		return digest.Digest(""), err
@@ -120,6 +120,7 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 	}
 
 	dgst, err := manifestService.Put(ctx, manifest, opts...)
+	logrus.Debugf("[registry client] put digest: %s", dgst)
 	return dgst, errors.Wrapf(err, "failed to put manifest %s", ref)
 }
 
