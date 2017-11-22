@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/docker/cli/cli/manifest/types"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/sirupsen/logrus"
 )
@@ -105,7 +106,14 @@ func (s *fsStore) Save(listRef reference.Reference, manifest reference.Reference
 		return err
 	}
 	filename := manifestToFilename(s.root, listRef.String(), manifest.String())
-	// indent to maintain sha parity with original from registry
+
+	// use the FromStruct method to get the indentations into the embedded json in order to mantain sha
+	// parity with the registry
+	reformattedDeserializedMf, err := schema2.FromStruct(image.SchemaV2Manifest.Manifest)
+	if err != nil {
+		return err
+	}
+	image.SchemaV2Manifest = reformattedDeserializedMf
 	bytes, err := json.Marshal(image)
 	if err != nil {
 		return err

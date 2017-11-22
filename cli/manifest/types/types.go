@@ -8,7 +8,9 @@ import (
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/opencontainers/go-digest"
+
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // ImageManifest contains info to output for a manifest object.
@@ -58,10 +60,15 @@ func NewImageManifest(ref reference.Named, digest digest.Digest, img Image, mani
 		OSVersion:    img.OSVersion,
 		OSFeatures:   img.OSFeatures,
 	}
+	dsm, err := schema2.FromStruct(manifest.Manifest)
+	if err != nil {
+		logrus.Errorf("Something weng wrong converting the contents of a manifest back to a manifest!")
+		return ImageManifest{}
+	}
 	return ImageManifest{
 		Ref:              &SerializableNamed{Named: ref},
 		Digest:           digest,
-		SchemaV2Manifest: manifest,
+		SchemaV2Manifest: dsm,
 		Platform:         platform,
 	}
 }
