@@ -76,11 +76,6 @@ func pullManifestSchemaV2(ctx context.Context, ref reference.Named, repo distrib
 	if err != nil {
 		return types.ImageManifest{}, err
 	}
-	// @TODO: DELETE ME
-	logrus.Debugf("digest of %s, '\n': %s", mfst, manifestDigest)
-	// this checks out and is the digest of the manifest (which is how it's stored
-	// in the registry ...
-
 	configJSON, err := pullManifestSchemaV2ImageConfig(ctx, mfst.Target().Digest, repo)
 	if err != nil {
 		return types.ImageManifest{}, err
@@ -187,7 +182,6 @@ func continueOnError(err error) bool {
 	case errcode.Error:
 		e := err.(errcode.Error)
 		switch e.Code {
-		// @TODO: We should try remaning endpoints in these cases?
 		case errcode.ErrorCodeUnauthorized, v2.ErrorCodeManifestUnknown, v2.ErrorCodeNameUnknown:
 			return true
 		}

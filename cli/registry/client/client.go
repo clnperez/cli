@@ -9,12 +9,11 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/reference"
 	distributionclient "github.com/docker/distribution/registry/client"
-	"github.com/sirupsen/logrus"
-	//"github.com/docker/distribution/registry/storage"
 	"github.com/docker/docker/api/types"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
 
@@ -96,9 +95,8 @@ func (c *client) MountBlob(ctx context.Context, sourceRef reference.Canonical, t
 	return ErrBlobCreated{From: sourceRef, Target: targetRef}
 }
 
-// PutManifestList sends the manifest to a registry and returns the new digest
+// PutManifest sends the manifest to a registry and returns the new digest
 func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest distribution.Manifest) (digest.Digest, error) {
-	logrus.Debugf("[registry:client] putting manifest/list: %s", manifest)
 	repoEndpoint, err := newDefaultRepositoryEndpoint(ref, c.insecureRegistry)
 	if err != nil {
 		return digest.Digest(""), err
@@ -120,7 +118,6 @@ func (c *client) PutManifest(ctx context.Context, ref reference.Named, manifest 
 	}
 
 	dgst, err := manifestService.Put(ctx, manifest, opts...)
-	logrus.Debugf("[registry client] put digest: %s", dgst)
 	return dgst, errors.Wrapf(err, "failed to put manifest %s", ref)
 }
 
