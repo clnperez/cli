@@ -13,12 +13,9 @@ import (
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
-	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
-
-	"github.com/sirupsen/logrus"
 )
 
 type pushOpts struct {
@@ -119,14 +116,12 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		}
 
 		repoName, _ := reference.WithName(manifestRepoName)
-		logrus.Debugf("manifest reponame: %s. targetRepoName: %s", repoName, targetRepoName)
 		if repoName.Name() != targetRepoName {
 			blobs, err := buildBlobRequestList(imageManifest, repoName)
 			if err != nil {
 				return req, err
 			}
 			req.manifestBlobs = append(req.manifestBlobs, blobs...)
-			logrus.Debugf("request manifest blobs: %s '\n'", blobs)
 
 			manifestPush, err := buildPutManifestRequest(imageManifest, targetRef)
 			if err != nil {
@@ -178,18 +173,10 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 		return manifestlist.ManifestDescriptor{}, err
 	}
 
-	logrus.Debugf("raw manifest payload: \n%s", raw)
-	var unmarshalledTemp schema2.DeserializedManifest
-	json.Unmarshal(raw, &unmarshalledTemp)
-	logrus.Debugf("unmarshalled payload: \n%s", unmarshalledTemp)
-
 	manifest := manifestlist.ManifestDescriptor{
 		Platform: imageManifest.Platform,
 	}
 	manifest.Descriptor.Digest = imageManifest.Digest
-	digest2 := digest.FromBytes(raw)
-	// This is definitely the issue. These should match and they don't. Hooooow do I get the tabs to stick around?
-	logrus.Debugf("calculated digest: %s, vs saved: %s", digest2, imageManifest.Digest)
 	manifest.Size = int64(len(raw))
 	manifest.MediaType = mediaType
 
@@ -198,8 +185,6 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 			"digest parse of image %q failed", imageManifest.Ref)
 	}
 
-	logrus.Debugf("completed manifestDescriptor: '\n' %s", manifest)
-
 	return manifest, nil
 }
 
@@ -207,25 +192,12 @@ func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.
 	var blobReqs []manifestBlob
 
 	for _, blobDigest := range imageManifest.Blobs() {
-		logrus.Debugf("blobDigest: %s", blobDigest)
 		canonical, err := reference.WithDigest(repoName, blobDigest)
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("canonical: %s", canonical)
 		blobReqs = append(blobReqs, manifestBlob{canonical: canonical, os: imageManifest.Platform.OS})
 	}
-	// I think we need to also add the original manifest?
-	/*
-		No we don't. That's already done in the buildPushRequest/pushReferences code.
-		logrus.Debugf("manifest digest to blob mount request: %s", imageManifest.Digest)
-		canonical, err := reference.WithDigest(repoName, imageManifest.Digest)
-		if err != nil {
-			return nil, err
-		}
-		logrus.Debugf("manifest canonical: %s", canonical)
-		blobReqs = append(blobReqs, manifestBlob{canonical: canonical, os: imageManifest.Platform.OS})
-	*/
 	return blobReqs, nil
 }
 
@@ -236,23 +208,7 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	mountRef, err := reference.WithDigest(refWithoutTag, imageManifest.Digest)
-	// calculate the digest here. i think it's wrong b/c spaces changed?
 
-	// experimenting -->
-	/*
-		v2ManifestBytes, err := json.MarshalIndent(&imageManifest.SchemaV2Manifest, "", "   ")
-		if err != nil {
-			return mountRequest{}, err
-		}
-		var v2Manifest schema2.DeserializedManifest
-		if err = json.Unmarshal(v2ManifestBytes, &v2Manifest); err != nil {
-			return mountRequest{}, err
-		}
-		return mountRequest{ref: mountRef, manifest: v2Manifest}, err
-		// <-- end experimenting
-
-		return mountRequest{ref: mountRef, manifest: *imageManifest.SchemaV2Manifest}, err
-	*/
 	v2ManifestBytes, err := json.MarshalIndent(imageManifest.SchemaV2Manifest, "", "   ")
 	if err != nil {
 		return mountRequest{}, err
@@ -264,12 +220,7 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	imageManifest.SchemaV2Manifest = &v2Manifest
-	mr := mountRequest{ref: mountRef, manifest: imageManifest}
-	logrus.Debugf("adding mount request %s", mr)
 
-	// is this with the canonical? yes. so, at this point can i recreate the schema2 part with tabs?
-	// the registryClient PutManifest sends a distribution.Manifest, which is an interface, and the registry will call payload.
-	logrus.Debugf("adding image manifest as ref to mount request: %s", imageManifest)
 	return mountRequest{ref: mountRef, manifest: imageManifest}, err
 }
 
@@ -293,9 +244,6 @@ func pushList(ctx context.Context, dockerCli command.Cli, req pushRequest) error
 
 func pushReferences(ctx context.Context, out io.Writer, client registryclient.RegistryClient, mounts []mountRequest) error {
 	for _, mount := range mounts {
-		logrus.Debugf("pushing ref for %s: '\n'", mount.manifest)
-		// how does client.PutManifest work? Can I put a byte array instead of a manifest object?
-		// it looks like this manifest has the canonical bytes, so how do i get tabs into it?
 		newDigest, err := client.PutManifest(ctx, mount.ref, mount.manifest)
 		if err != nil {
 			return err
