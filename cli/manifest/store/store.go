@@ -9,9 +9,7 @@ import (
 	"strings"
 
 	"github.com/docker/cli/cli/manifest/types"
-	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
-	"github.com/sirupsen/logrus"
 )
 
 // Store manages local storage of image distribution manifests
@@ -46,7 +44,6 @@ func (s *fsStore) Get(listRef reference.Reference, manifest reference.Reference)
 
 func (s *fsStore) getFromFilename(ref reference.Reference, filename string) (types.ImageManifest, error) {
 	bytes, err := ioutil.ReadFile(filename)
-	logrus.Debugf("retrieved manifest from file: \n%s", bytes)
 	switch {
 	case os.IsNotExist(err):
 		return types.ImageManifest{}, newNotFoundError(ref.String())
@@ -54,10 +51,7 @@ func (s *fsStore) getFromFilename(ref reference.Reference, filename string) (typ
 		return types.ImageManifest{}, err
 	}
 	var manifestInfo types.ImageManifest
-	//return manifestInfo, json.Unmarshal(bytes, &manifestInfo)
-	err = json.Unmarshal(bytes, &manifestInfo)
-	logrus.Debugf("unmarshalled manifest from file: \n%s", manifestInfo)
-	return manifestInfo, err
+	return manifestInfo, json.Unmarshal(bytes, &manifestInfo)
 }
 
 // GetList returns all the local manifests for a transaction
@@ -106,20 +100,10 @@ func (s *fsStore) Save(listRef reference.Reference, manifest reference.Reference
 		return err
 	}
 	filename := manifestToFilename(s.root, listRef.String(), manifest.String())
-
-	// use the FromStruct method to get the indentations into the embedded json in order to mantain sha
-	// parity with the registry
-	reformattedDeserializedMf, err := schema2.FromStruct(image.SchemaV2Manifest.Manifest)
-	if err != nil {
-		return err
-	}
-	image.SchemaV2Manifest = reformattedDeserializedMf
 	bytes, err := json.Marshal(image)
 	if err != nil {
 		return err
 	}
-	logrus.Debugf("storing image: %s: \n", image)
-	logrus.Debugf("writing manifest to file: \n %s", bytes)
 	return ioutil.WriteFile(filename, bytes, 0644)
 }
 
