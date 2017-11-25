@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -9,9 +10,9 @@ import (
 	"github.com/docker/cli/cli/manifest/types"
 	registryclient "github.com/docker/cli/cli/registry/client"
 	"github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
-	digest "github.com/opencontainers/go-digest"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
@@ -99,6 +100,15 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		return req, err
 	}
 
+	targetRepo, err := registry.ParseRepositoryInfo(targetRef)
+	if err != nil {
+		return req, err
+	}
+	targetRepoName, err := registryclient.RepoNameForReference(targetRepo.Name)
+	if err != nil {
+		return req, err
+	}
+
 	for _, imageManifest := range manifests {
 		manifestRepoName, err := registryclient.RepoNameForReference(imageManifest.Ref)
 		if err != nil {
@@ -106,17 +116,19 @@ func buildPushRequest(manifests []types.ImageManifest, targetRef reference.Named
 		}
 
 		repoName, _ := reference.WithName(manifestRepoName)
-		blobs, err := buildBlobRequestList(imageManifest, repoName)
-		if err != nil {
-			return req, err
-		}
-		req.manifestBlobs = append(req.manifestBlobs, blobs...)
+		if repoName.Name() != targetRepoName {
+			blobs, err := buildBlobRequestList(imageManifest, repoName)
+			if err != nil {
+				return req, err
+			}
+			req.manifestBlobs = append(req.manifestBlobs, blobs...)
 
-		manifestPush, err := buildPutManifestRequest(imageManifest, targetRef)
-		if err != nil {
-			return req, err
+			manifestPush, err := buildPutManifestRequest(imageManifest, targetRef)
+			if err != nil {
+				return req, err
+			}
+			req.mountRequests = append(req.mountRequests, manifestPush)
 		}
-		req.mountRequests = append(req.mountRequests, manifestPush)
 	}
 	return req, nil
 }
@@ -163,7 +175,7 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 	manifest := manifestlist.ManifestDescriptor{
 		Platform: imageManifest.Platform,
 	}
-	manifest.Descriptor.Digest = digest.FromBytes(raw)
+	manifest.Descriptor.Digest = imageManifest.Digest
 	manifest.Size = int64(len(raw))
 	manifest.MediaType = mediaType
 
@@ -183,7 +195,6 @@ func buildBlobRequestList(imageManifest types.ImageManifest, repoName reference.
 		if err != nil {
 			return nil, err
 		}
-
 		blobReqs = append(blobReqs, manifestBlob{canonical: canonical, os: imageManifest.Platform.OS})
 	}
 	return blobReqs, nil
@@ -196,6 +207,20 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	mountRef, err := reference.WithDigest(refWithoutTag, imageManifest.Digest)
+
+	// This indentation has to be added to ensure sha parity with the registry
+	v2ManifestBytes, err := json.MarshalIndent(imageManifest.SchemaV2Manifest, "", "   ")
+	if err != nil {
+		return mountRequest{}, err
+	}
+	// indent only the DeserializedManifest portion of this, in order to maintain parity with the registry
+	// and not alter the sha
+	var v2Manifest schema2.DeserializedManifest
+	if err = v2Manifest.UnmarshalJSON(v2ManifestBytes); err != nil {
+		return mountRequest{}, err
+	}
+	imageManifest.SchemaV2Manifest = &v2Manifest
+
 	return mountRequest{ref: mountRef, manifest: imageManifest}, err
 }
 
@@ -223,7 +248,7 @@ func pushReferences(ctx context.Context, out io.Writer, client registryclient.Re
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "Pushed manifest %s with digest: %s\n", mount.ref, newDigest)
+		fmt.Fprintf(out, "Pushed ref %s with digest: %s\n", mount.ref, newDigest)
 	}
 	return nil
 }

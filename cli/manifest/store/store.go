@@ -100,8 +100,7 @@ func (s *fsStore) Save(listRef reference.Reference, manifest reference.Reference
 		return err
 	}
 	filename := manifestToFilename(s.root, listRef.String(), manifest.String())
-	// indent to maintain sha parity with original from registry
-	bytes, err := json.MarshalIndent(image, "", "  ")
+	bytes, err := json.Marshal(image)
 	if err != nil {
 		return err
 	}
