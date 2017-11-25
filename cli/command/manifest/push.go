@@ -167,7 +167,6 @@ func buildManifestDescriptor(targetRepo *registry.RepositoryInfo, imageManifest 
 		return manifestlist.ManifestDescriptor{}, errors.Errorf("cannot use source images from a different registry than the target image: %s != %s", manifestRepoHostname, targetRepoHostname)
 	}
 
-	// I think I have to fix the formatting here too. The put digest is for the right one but the wrong sha is still showing up in the manifest list itself, which is built from these.
 	mediaType, raw, err := imageManifest.Payload()
 	if err != nil {
 		return manifestlist.ManifestDescriptor{}, err
