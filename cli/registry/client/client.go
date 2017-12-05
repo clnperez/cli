@@ -61,6 +61,7 @@ func (err ErrBlobCreated) Error() string {
 		err.From, err.Target)
 }
 
+// ErrHTTPProto returned if attempting to use TLS with a non-TLS registry
 type ErrHTTPProto struct {
 	OrigErr string
 }

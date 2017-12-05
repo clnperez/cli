@@ -207,6 +207,9 @@ func buildPutManifestRequest(imageManifest types.ImageManifest, targetRef refere
 		return mountRequest{}, err
 	}
 	mountRef, err := reference.WithDigest(refWithoutTag, imageManifest.Digest)
+	if err != nil {
+		return mountRequest{}, err
+	}
 
 	// This indentation has to be added to ensure sha parity with the registry
 	v2ManifestBytes, err := json.MarshalIndent(imageManifest.SchemaV2Manifest, "", "   ")
