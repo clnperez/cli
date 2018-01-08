@@ -88,7 +88,7 @@ func getHTTPTransport(authConfig authtypes.AuthConfig, endpoint registry.APIEndp
 		DisableKeepAlives:   true,
 	}
 
-	modifiers := registry.DockerHeaders(userAgent, http.Header{})
+	modifiers := registry.Headers(userAgent, http.Header{})
 	authTransport := transport.NewTransport(base, modifiers...)
 	challengeManager, confirmedV2, err := registry.PingV2Registry(endpoint.URL, authTransport)
 	if err != nil {
