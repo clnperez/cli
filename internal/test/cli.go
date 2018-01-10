@@ -29,6 +29,7 @@ type FakeCli struct {
 	err              *bytes.Buffer
 	in               *command.InStream
 	server           command.ServerInfo
+	clientInfoFunc   clientInfoFuncType
 	notaryClientFunc notaryClientFuncType
 	manifestStore    manifeststore.Store
 	registryClient   registryclient.RegistryClient
