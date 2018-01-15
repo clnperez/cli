@@ -13,7 +13,7 @@ keywords: "docker, manifest"
      will be rejected.
 -->
 
-# manifest
+## manifest
 
 ```markdown
 Usage:  docker manifest COMMAND
@@ -31,25 +31,25 @@ Commands:
 
 ```
 
-## Description
+### Description
 
 The `docker manifest` command by itself performs no action. In order to operate
-on a `manifest` or `manifest list`, one of the subcommands must be used.
+on a manifest or manifest list, one of the subcommands must be used.
 
-A single `manifest` is information about an image, such as layers, size, and digest.
+A single manifest is information about an image, such as layers, size, and digest.
 The docker manifest command also gives users additional information such as the os
 and architecture an image was built for.
 
-A `manifest list` is a list of image layers that is created by specifying one or
+A manifest list is a list of image layers that is created by specifying one or
 more (ideally more than one) image names. It can then be used in the same way as
 an image name in `docker pull` and `docker run` commands, for example.
 
-Ideally a `manifest list` is created from images that are identical in function for
+Ideally a manifest list is created from images that are identical in function for
 different os/arch combinations. For this reason, manifest lists are often referred to as
-"multi-arch images." However, a user could create a `manifest list` that points
+"multi-arch images." However, a user could create a manifest list that points
 to two images -- one for windows on amd64, and one for darwin on amd64.
 
-## Manifest inspect
+### manifest inspect
 ```
 manifest inspect --help
 
@@ -63,9 +63,9 @@ Options:
   -v, --verbose    Output additional info including layers and platform
 ```
 
-## Examples
+### Examples
 
-### Inspect an image's manifest
+#### Inspect an image's manifest
  
 ```bash
 $ docker manifest inspect hello-world
@@ -87,7 +87,7 @@ $ docker manifest inspect hello-world
 }
 ```
 
-### Inspect an image's manifest and get the os/arch info
+#### Inspect an image's manifest and get the os/arch info
 
 The `docker manifest inspect` command takes an optional `--verbose` flag
 that gives you the image's name (Ref), and architecture and os (Platform).
@@ -125,9 +125,9 @@ $ docker manifest inspect -v hello-world
 }
 ```
 
-# Creating and pushing a `manifest list`
+## Creating and pushing a manifest list
 
-To create a `manifest list`, you first `create` the manifest list locally by specifying the constituent images you would
+To create a manifest list, you first `create` the manifest list locally by specifying the constituent images you would
 like to have included in your manifest list. Keep in mind that this will be pushed to a registry, so if you want to push
 to a registry other than the docker registry, you will need to create your manifest list with the registry name or IP and port.
 This is similar to tagging an image and pushing it to a foreign registry.
@@ -136,10 +136,10 @@ After you have created your local copy of the manifest list, you may optionally
 `annotate` it. Annotations allowed are the architecture and operating system (overriding the image's current values),
 os features, and an archictecure variant. 
 
-Finally, you will need to `push` your `manifest list` to the desired registry. Below are descriptions of these three commands,
+Finally, you will need to `push` your manifest list to the desired registry. Below are descriptions of these three commands,
 and an example putting them all together.
 
-## manifest create
+### manifest create
 ```bash
 Usage:  docker manifest create MANFEST_LIST MANIFEST [MANIFEST...]
 
@@ -151,7 +151,7 @@ Options:
       --help    Print usage
 ```
 
-## manifest annotate
+### manifest annotate
 ```bash
 Usage:  docker manifest annotate [OPTIONS] MANIFEST_LIST MANIFEST
 
@@ -166,7 +166,7 @@ Options:
 
 ```
 
-## manifest push
+### manifest push
 ```bash
 Usage:  docker manifest push [OPTIONS] MANIFEST_LIST
 
@@ -178,9 +178,9 @@ Options:
   -p, --purge   Remove the local manifest list after push
 ```
 
-## Examples
+### Examples
 
-### The manifest list create, annotate push flow
+#### The manifest list create, annotate push flow
 
 ```bash
 $ docker manifest create 45.55.81.106:5000/coolapp:v1 \
@@ -205,7 +205,7 @@ sha256:050b213d49d7673ba35014f21454c573dcbec75254a08f4a7c34f66a47c06aba
 
 ```
 
-### Inspect a manifest list
+#### Inspect a manifest list
 
 ```bash
 $ docker manifest inspect coolapp:v1
@@ -253,11 +253,11 @@ $ docker manifest inspect coolapp:v1
 }
 ```
 
-## Insecure Registries
+### Insecure Registries
 
 The manifest command interacts solely with a docker registry. Additionally, it has no way to query the list if allowed insecure registries from the engine. Because of this, a flag is needed with `docker manifest` commands if a user wishes to interact with an insecure registry. For each transaction, such as a create, which queries a registry, the `--insecure` flag must be specified. This flag tells the CLI that this registry call may ignore security concerns like missing or self-signed certificates.
 
-### Examples
+#### Examples
 Here is an example of creating and pushing a manifest list using an known insecure registry.
 
 ```
@@ -273,5 +273,5 @@ $ docker manifest create --insecure myprivateregistry.mycompany.com/repo/image:1
 $ docker manifest push --insecure myprivateregistry.mycompany.com/repo/image:tag
 ```
 
-Note that the `--insecure` flag is not required to annotate a `manifest list`, since annotations are to a locally-stored copy of a manifest list. You may also skip the `--insecure` flag if you are performaing a `docker manifest inspect` on a locally-stored manifest list. Be sure to keep in mind that locally-stored manifest lists are never used by the engine on a `pull`.
+Note that the `--insecure` flag is not required to annotate a manifest list, since annotations are to a locally-stored copy of a manifest list. You may also skip the `--insecure` flag if you are performaing a `docker manifest inspect` on a locally-stored manifest list. Be sure to keep in mind that locally-stored manifest lists are never used by the engine on a `docker pull`.
 
