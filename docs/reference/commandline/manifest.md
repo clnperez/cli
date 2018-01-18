@@ -13,8 +13,6 @@ keywords: "docker, manifest"
      will be rejected.
 -->
 
-## manifest
-
 ```markdown
 Usage:  docker manifest COMMAND
 
@@ -31,7 +29,7 @@ Commands:
 
 ```
 
-### Description
+## Description
 
 The `docker manifest` command by itself performs no action. In order to operate
 on a manifest or manifest list, one of the subcommands must be used.
@@ -50,12 +48,13 @@ different os/arch combinations. For this reason, manifest lists are often referr
 to two images -- one for windows on amd64, and one for darwin on amd64.
 
 ### manifest inspect
+
 ```
 manifest inspect --help
 
 Usage:  docker manifest inspect [OPTIONS] [MANIFEST_LIST] MANIFEST
 
-Display an image manifest, or manifest list
+isplay an image manifest, or manifest list
 
 Options:
       --help       Print usage
@@ -63,83 +62,8 @@ Options:
   -v, --verbose    Output additional info including layers and platform
 ```
 
-### Examples
+### manifest create 
 
-#### Inspect an image's manifest
- 
-```bash
-$ docker manifest inspect hello-world
-{
-        "schemaVersion": 2,
-        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-        "config": {
-                "mediaType": "application/vnd.docker.container.image.v1+json",
-                "size": 1520,
-                "digest": "sha256:1815c82652c03bfd8644afda26fb184f2ed891d921b20a0703b46768f9755c57"
-        },
-        "layers": [
-                {
-                        "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-                        "size": 972,
-                        "digest": "sha256:b04784fba78d739b526e27edc02a5a8cd07b1052e9283f5fc155828f4b614c28"
-                }
-        ]
-}
-```
-
-#### Inspect an image's manifest and get the os/arch info
-
-The `docker manifest inspect` command takes an optional `--verbose` flag
-that gives you the image's name (Ref), and architecture and os (Platform).
-
-Just as with other docker commands that take image names, you can refer to an image with or
-without a tag, or by digest (e.g. hello-world@sha256:f3b3b28a45160805bb16542c9531888519430e9e6d6ffc09d72261b0d26ff74f).
-
-Here is an example of inspecting an image's manifest with the `--verbose` flag:
-
-```bash
-$ docker manifest inspect -v hello-world
-{
-        "Ref": "docker.io/library/hello-world:latest",
-        "Digest": "sha256:f3b3b28a45160805bb16542c9531888519430e9e6d6ffc09d72261b0d26ff74f",
-        "SchemaV2Manifest": {
-                "schemaVersion": 2,
-                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-                "config": {
-                        "mediaType": "application/vnd.docker.container.image.v1+json",
-                        "size": 1520,
-                        "digest": "sha256:1815c82652c03bfd8644afda26fb184f2ed891d921b20a0703b46768f9755c57"
-                },
-                "layers": [
-                        {
-                                "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
-                                "size": 972,
-                                "digest": "sha256:b04784fba78d739b526e27edc02a5a8cd07b1052e9283f5fc155828f4b614c28"
-                        }
-                ]
-        },
-        "Platform": {
-                "architecture": "amd64",
-                "os": "linux"
-        }
-}
-```
-
-## Creating and pushing a manifest list
-
-To create a manifest list, you first `create` the manifest list locally by specifying the constituent images you would
-like to have included in your manifest list. Keep in mind that this will be pushed to a registry, so if you want to push
-to a registry other than the docker registry, you will need to create your manifest list with the registry name or IP and port.
-This is similar to tagging an image and pushing it to a foreign registry.
-
-After you have created your local copy of the manifest list, you may optionally
-`annotate` it. Annotations allowed are the architecture and operating system (overriding the image's current values),
-os features, and an archictecure variant. 
-
-Finally, you will need to `push` your manifest list to the desired registry. Below are descriptions of these three commands,
-and an example putting them all together.
-
-### manifest create
 ```bash
 Usage:  docker manifest create MANFEST_LIST MANIFEST [MANIFEST...]
 
@@ -178,9 +102,85 @@ Options:
   -p, --purge   Remove the local manifest list after push
 ```
 
-### Examples
+### Working with insecure registries
 
-#### The manifest list create, annotate push flow
+The manifest command interacts solely with a Docker registry. Because of this, it has no way to query the engine for the list of allowed insecure registries. To allow the CLI to interact with an insecure registry, some `docker manifest` commands have an `--insecure` flag. For each transaction, such as a `create`, which queries a registry, the `--insecure` flag must be specified. This flag tells the CLI that this registry call may ignore security concerns like missing or self-signed certificates. Likewise, on a `manifest push` to an insecure registry, the `--insecure` flag must be specified. If this is not used with an insecure registry, the manifest command fails to find a registry that meets the default requirements.
+
+## Examples
+
+### inspect an image's manifest object
+ 
+```bash
+$ docker manifest inspect hello-world
+{
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+        "config": {
+                "mediaType": "application/vnd.docker.container.image.v1+json",
+                "size": 1520,
+                "digest": "sha256:1815c82652c03bfd8644afda26fb184f2ed891d921b20a0703b46768f9755c57"
+        },
+        "layers": [
+                {
+                        "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                        "size": 972,
+                        "digest": "sha256:b04784fba78d739b526e27edc02a5a8cd07b1052e9283f5fc155828f4b614c28"
+                }
+        ]
+}
+```
+
+### Inspect an image's manifest and get the os/arch info
+
+The `docker manifest inspect` command takes an optional `--verbose` flag
+that gives you the image's name (Ref), and architecture and os (Platform).
+
+Just as with other docker commands that take image names, you can refer to an image with or
+without a tag, or by digest (e.g. hello-world@sha256:f3b3b28a45160805bb16542c9531888519430e9e6d6ffc09d72261b0d26ff74f).
+
+Here is an example of inspecting an image's manifest with the `--verbose` flag:
+
+```bash
+$ docker manifest inspect -v hello-world
+{
+        "Ref": "docker.io/library/hello-world:latest",
+        "Digest": "sha256:f3b3b28a45160805bb16542c9531888519430e9e6d6ffc09d72261b0d26ff74f",
+        "SchemaV2Manifest": {
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                        "mediaType": "application/vnd.docker.container.image.v1+json",
+                        "size": 1520,
+                        "digest": "sha256:1815c82652c03bfd8644afda26fb184f2ed891d921b20a0703b46768f9755c57"
+                },
+                "layers": [
+                        {
+                                "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                                "size": 972,
+                                "digest": "sha256:b04784fba78d739b526e27edc02a5a8cd07b1052e9283f5fc155828f4b614c28"
+                        }
+                ]
+        },
+        "Platform": {
+                "architecture": "amd64",
+                "os": "linux"
+        }
+}
+```
+
+### Create and push a manifest list
+
+To create a manifest list, you first `create` the manifest list locally by specifying the constituent images you would
+like to have included in your manifest list. Keep in mind that this is pushed to a registry, so if you want to push
+to a registry other than the docker registry, you need to create your manifest list with the registry name or IP and port.
+This is similar to tagging an image and pushing it to a foreign registry.
+
+After you have created your local copy of the manifest list, you may optionally
+`annotate` it. Annotations allowed are the architecture and operating system (overriding the image's current values),
+os features, and an archictecure variant. 
+
+Finally, you need to `push` your manifest list to the desired registry. Below are descriptions of these three commands,
+and an example putting them all together.
 
 ```bash
 $ docker manifest create 45.55.81.106:5000/coolapp:v1 \
@@ -205,7 +205,7 @@ sha256:050b213d49d7673ba35014f21454c573dcbec75254a08f4a7c34f66a47c06aba
 
 ```
 
-#### Inspect a manifest list
+### Inspect a manifest list
 
 ```bash
 $ docker manifest inspect coolapp:v1
@@ -253,12 +253,9 @@ $ docker manifest inspect coolapp:v1
 }
 ```
 
-### Insecure Registries
+### Push to an insecure registry
 
-The manifest command interacts solely with a docker registry. Additionally, it has no way to query the list if allowed insecure registries from the engine. Because of this, a flag is needed with `docker manifest` commands if a user wishes to interact with an insecure registry. For each transaction, such as a create, which queries a registry, the `--insecure` flag must be specified. This flag tells the CLI that this registry call may ignore security concerns like missing or self-signed certificates.
-
-#### Examples
-Here is an example of creating and pushing a manifest list using an known insecure registry.
+Here is an example of creating and pushing a manifest list using a known insecure registry.
 
 ```
 $ docker manifest create --insecure myprivateregistry.mycompany.com/repo/image:1.0 \
