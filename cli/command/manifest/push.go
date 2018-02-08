@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
@@ -14,14 +16,17 @@ import (
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/registry"
+
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	yaml "gopkg.in/yaml.v2"
 )
 
 type pushOpts struct {
 	insecure bool
 	purge    bool
 	target   string
+	file     string
 }
 
 type mountRequest struct {
@@ -42,32 +47,63 @@ type pushRequest struct {
 	insecure      bool
 }
 
+type yamlManifestList struct {
+	Image     string
+	Manifests []yamlManifest
+}
+
+type yamlManifest struct {
+	Image    string
+	Platform manifestlist.PlatformSpec
+}
+
 func newPushListCommand(dockerCli command.Cli) *cobra.Command {
 	opts := pushOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "push [OPTIONS] MANIFEST_LIST",
+		Use:   "push [OPTIONS] [MANIFEST_LIST]",
 		Short: "Push a manifest list to a repository",
-		Args:  cli.ExactArgs(1),
+		Args:  cli.RequiresRangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.target = args[0]
+			if len(args) == 1 {
+				opts.target = args[0]
+			}
 			return runPush(dockerCli, opts)
 		},
 	}
 
 	flags := cmd.Flags()
-	flags.BoolVarP(&opts.purge, "purge", "p", false, "Remove the local manifest list after push")
-	flags.BoolVar(&opts.insecure, "insecure", false, "Allow push to an insecure registry")
+	flags.BoolVarP(&opts.purge, "purge", "p", false, "remove the local manifest list after push")
+	flags.BoolVar(&opts.insecure, "insecure", false, "allow push to an insecure registry")
+	flags.StringVar(&opts.file, "filename", "", "create, annotate, and push using a yaml file")
 	return cmd
 }
 
 func runPush(dockerCli command.Cli, opts pushOpts) error {
 
+	if opts.target == "" && opts.file == "" {
+		return errors.New("please specify either a file or local manifest name")
+	}
+
+	if opts.file != "" {
+		yamlInput, err := getYamlManifestList(dockerCli, opts.file)
+		if err != nil {
+			return err
+		}
+		if err := createListFromYaml(dockerCli, yamlInput, opts.insecure); err != nil {
+			return err
+		}
+		if err := annotateListFromYaml(dockerCli, yamlInput); err != nil {
+			return err
+		}
+		opts.purge = true
+		opts.target = yamlInput.Image
+	}
+
 	targetRef, err := normalizeReference(opts.target)
 	if err != nil {
 		return err
 	}
-
 	manifests, err := dockerCli.ManifestStore().GetList(targetRef)
 	if err != nil {
 		return err
@@ -270,4 +306,48 @@ func mountBlobs(ctx context.Context, client registryclient.RegistryClient, ref r
 		}
 	}
 	return nil
+}
+
+func annotateListFromYaml(cli command.Cli, yaml yamlManifestList) error {
+
+	for _, manifest := range yaml.Manifests {
+		opts := annotateOptions{
+			target:     yaml.Image,
+			image:      manifest.Image,
+			variant:    manifest.Platform.Variant,
+			os:         manifest.Platform.OS,
+			arch:       manifest.Platform.Architecture,
+			osFeatures: manifest.Platform.OSFeatures,
+		}
+		if err := runManifestAnnotate(cli, opts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createListFromYaml(cli command.Cli, yamlInput yamlManifestList, insecureRegistry bool) error {
+
+	var args []string
+	args = append(args, yamlInput.Image)
+	for _, manifest := range yamlInput.Manifests {
+		args = append(args, manifest.Image)
+	}
+	return createManifestList(cli, args, createOpts{amend: false, insecure: insecureRegistry})
+}
+
+func getYamlManifestList(dockerCli command.Cli, yamlFile string) (yamlManifestList, error) {
+	var yamlInput yamlManifestList
+
+	if _, err := os.Stat(yamlFile); err != nil {
+		return yamlManifestList{}, err
+	}
+	yamlBuf, err := ioutil.ReadFile(yamlFile)
+	if err != nil {
+		return yamlManifestList{}, err
+	}
+	if err := yaml.UnmarshalStrict(yamlBuf, &yamlInput); err != nil {
+		return yamlManifestList{}, err
+	}
+	return yamlInput, nil
 }
